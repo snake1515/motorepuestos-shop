@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>MotoRepuestos</title>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<header>
+  <div class="brand">MOTO<span>REPUESTOS</span></div>
+  <select id="catSelect" onchange="setCat(this.value)" style="min-width:160px"></select>
+  <input id="searchBox" placeholder="Buscar por nombre o código..." oninput="onSearch(this.value)" style="flex:1;min-width:160px">
+  <div class="right">
+    <button class="iconbtn" onclick="openCart()">🛒 <span id="cartCount">0</span></button>
+    <button class="iconbtn" id="passBtn" onclick="changePass()" style="display:none">Contraseña</button>
+    <button class="iconbtn" id="acctBtn" onclick="onAcctClick()">Ingresar</button>
+  </div>
+</header>
+<main>
+  <div id="adminBar"></div>
+  <h2 id="catTitle" style="margin-bottom:14px;">Catálogo</h2>
+  <div id="loadingMsg" class="empty">Cargando catálogo...</div>
+  <div class="grid" id="grid"></div>
+  <div id="adminPanel" style="display:none"></div>
+</main>
+<footer>MotoRepuestos — los datos de pago se coordinan por correo tras confirmar el pedido.</footer>
+
+<div class="modal-bg" id="authModal"><div class="modal">
+  <button class="close-x" onclick="closeModal('authModal')">✕</button>
+  <div class="tabs"><button id="tabLogin" class="active" onclick="switchAuth('login')">Ingresar</button><button id="tabReg" onclick="switchAuth('reg')">Crear cuenta</button></div>
+  <div id="authMsg"></div>
+  <div class="field"><label>Correo</label><input id="authEmail" type="email"></div>
+  <div class="field"><label>Contraseña</label><input id="authPass" type="password"></div>
+  <button class="btn" style="width:100%" onclick="submitAuth()" id="authSubmit">Ingresar</button>
+</div></div>
+
+<div class="modal-bg" id="cartModal"><div class="modal">
+  <button class="close-x" onclick="closeModal('cartModal')">✕</button>
+  <h2>Tu carrito</h2>
+  <div id="cartItems"></div>
+  <div style="display:flex;justify-content:space-between;font-size:20px;margin:14px 0;"><b>Total</b><b id="cartTotal" style="color:var(--accent)"></b></div>
+  <button class="btn" style="width:100%" onclick="openCheckout()">Finalizar compra</button>
+</div></div>
+
+<div class="modal-bg" id="checkoutModal"><div class="modal">
+  <button class="close-x" onclick="closeModal('checkoutModal')">✕</button>
+  <h2>Finalizar compra</h2>
+  <p style="color:var(--muted);font-size:14px">Te enviaremos los datos de pago (transferencia/consignación) a este correo.</p>
+  <div class="field"><label>Correo de contacto</label><input id="coEmail" type="email"></div>
+  <div class="field"><label>Nombre</label><input id="coName" type="text"></div>
+  <div id="coMsg"></div>
+  <button class="btn" style="width:100%" onclick="confirmOrder()">Enviar pedido</button>
+</div></div>
+
+<div class="modal-bg" id="prodModal"><div class="modal">
+  <button class="close-x" onclick="closeModal('prodModal')">✕</button>
+  <h2 id="pTitle">Nuevo producto</h2>
+  <div class="field"><label>Nombre</label><input id="pName"></div>
+  <div class="field"><label>Código (opcional)</label><input id="pCode" placeholder="Ej: JKM390023"></div>
+  <div class="field"><label>Categoría</label><select id="pCat"></select></div>
+  <div class="field"><label>Precio base (COP)</label><input id="pPrice" type="number"></div>
+  <div class="field"><label>Stock</label><input id="pStock" type="number" value="10"></div>
+  <div class="field"><label>Imagen</label><input id="pImg" type="file" accept="image/*"></div>
+  <div id="pMsg"></div>
+  <button class="btn" style="width:100%" onclick="saveProduct()" id="pSaveBtn">Guardar producto</button>
+</div></div>
+
+<script src="config.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
