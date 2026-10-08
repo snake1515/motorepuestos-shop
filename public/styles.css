@@ -52,6 +52,15 @@ th{color:var(--muted);font-weight:600;font-size:12px;text-transform:uppercase;}
 .empty{color:var(--muted);text-align:center;padding:40px 0;}
 footer{text-align:center;color:var(--muted);font-size:13px;padding:20px;}
 
+#toast{
+  position:fixed; left:50%; bottom:24px; transform:translateX(-50%) translateY(20px);
+  background:var(--ok); color:#0E1510; font-weight:600; font-size:14px;
+  padding:12px 20px; border-radius:8px; box-shadow:0 6px 20px rgba(0,0,0,.35);
+  opacity:0; pointer-events:none; transition:opacity .25s ease, transform .25s ease;
+  z-index:50; max-width:90vw; text-align:center;
+}
+#toast.show{ opacity:1; transform:translateX(-50%) translateY(0); }
+
 /* ───────────────────────── Móvil ───────────────────────── */
 @media (max-width: 640px){
   header{padding:10px 12px;gap:8px;}
@@ -71,4 +80,5 @@ footer{text-align:center;color:var(--muted);font-size:13px;padding:20px;}
 @media (max-width: 380px){
   .grid{grid-template-columns:repeat(auto-fill,minmax(120px,1fr));}
 }
+
 
