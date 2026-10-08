@@ -1,1 +1,428 @@
+// MotoRepuestos — lógica de la tienda contra Supabase (DB + Auth + Storage).
+// El carrito es lo único que sigue viviendo en localStorage (es solo de la
+// visita actual); todo lo demás (catálogo, cuentas, pedidos) vive en Supabase.
 
+const sb = window.supabase.createClient(window.SUPABASE_CONFIG.url, window.SUPABASE_CONFIG.anonKey);
+
+const CART_KEY = 'eshop_cart';
+function loadCart(){ try{ return JSON.parse(localStorage.getItem(CART_KEY))||[]; }catch(e){ return []; } }
+function saveCart(c){ try{ localStorage.setItem(CART_KEY, JSON.stringify(c)); }catch(e){} }
+
+let state = {
+  products: [],
+  categories: [],
+  profile: null,     // perfil del usuario logueado (tipo, pct, is_admin)
+  curCat: 'Todos',
+  search: '',
+  adminSearch: '',
+  view: 'shop',
+  adminTab: 'prod',
+  editId: null,
+  imgFile: null,
+};
+
+function fmt(n){ return '$' + Math.round(n).toLocaleString('es-CO'); }
+function toTitle(s){
+  const small=['de','del','la','las','el','los','y','en','a','con'];
+  return (s||'').toString().trim().split(/\s+/).map((w,i)=>{
+    const lw=w.toLowerCase();
+    return (i>0 && small.includes(lw)) ? lw : (lw.charAt(0).toUpperCase()+lw.slice(1));
+  }).join(' ');
+}
+function priceFor(base){
+  if(!state.profile) return base;
+  return Math.round(base * (1 - (state.profile.pct||0)/100));
+}
+function closeModal(id){ document.getElementById(id).classList.remove('show'); }
+
+// ───────────────────────────── Carga de datos ─────────────────────────
+async function loadCatalog(){
+  const [{data:prods, error:e1}, {data:cats, error:e2}] = await Promise.all([
+    sb.from('products').select('*').order('name'),
+    sb.from('categories').select('name').order('name'),
+  ]);
+  if(e1) console.error(e1);
+  if(e2) console.error(e2);
+  state.products = prods || [];
+  state.categories = (cats||[]).map(c=>c.name);
+}
+
+async function loadProfile(){
+  const { data:{ session } } = await sb.auth.getSession();
+  if(!session){ state.profile = null; return; }
+  const { data, error } = await sb.from('profiles').select('*').eq('id', session.user.id).single();
+  if(error){ state.profile = null; return; }
+  state.profile = data;
+}
+
+// ───────────────────────────── Render ──────────────────────────────────
+function renderCatSelect(){
+  const cats=['Todos', ...state.categories];
+  document.getElementById('catSelect').innerHTML = cats.map(c=>
+    `<option value="${c}" ${c===state.curCat?'selected':''}>${c}</option>`).join('');
+  document.getElementById('catTitle').textContent = state.curCat==='Todos' ? 'Catálogo' : state.curCat;
+}
+function setCat(c){ state.curCat=c; state.view='shop'; render(); }
+function onSearch(v){ state.search = v.trim().toLowerCase(); render(); }
+
+function renderGrid(){
+  let list = state.products.filter(p => state.curCat==='Todos' || p.category===state.curCat);
+  if(state.search) list = list.filter(p =>
+    p.name.toLowerCase().includes(state.search) || (p.code||'').toLowerCase().includes(state.search));
+  const admin = state.profile && state.profile.is_admin;
+  document.getElementById('grid').innerHTML = list.length ? list.map(p=>{
+    const fp = priceFor(p.price);
+    const showBase = state.profile && fp !== p.price;
+    return `<div class="card">
+      <div class="thumb">${p.image_url ? `<img src="${p.image_url}" loading="lazy">` : 'Sin imagen'}</div>
+      <div class="card-body">
+        <div class="cat-tag">${p.category}${p.code ? ' · '+p.code : ''}</div>
+        <div class="pname">${p.name}</div>
+        ${showBase ? `<div class="price-base">${fmt(p.price)}</div>` : ''}
+        <div class="price">${fmt(fp)}</div>
+        <div class="stock">Stock: ${p.stock}</div>
+        <button class="btn btn-sm" style="margin-top:6px" ${p.stock<1?'disabled':''} onclick="addToCart(${p.id})">${p.stock<1?'Agotado':'Agregar al carrito'}</button>
+        ${admin ? `<button class="btn-outline btn-sm" onclick="deleteProduct(${p.id})">Eliminar</button>` : ''}
+      </div></div>`;
+  }).join('') : '<div class="empty">No hay productos que coincidan.</div>';
+}
+
+function renderAcct(){
+  const btn = document.getElementById('acctBtn');
+  btn.textContent = state.profile ? `${state.profile.email.split('@')[0]} · salir` : 'Ingresar';
+  document.getElementById('passBtn').style.display = state.profile ? '' : 'none';
+}
+async function onAcctClick(){
+  if(state.profile){ await sb.auth.signOut(); state.profile=null; state.view='shop'; render(); }
+  else document.getElementById('authModal').classList.add('show');
+}
+
+function renderAdminBar(){
+  const bar = document.getElementById('adminBar');
+  if(!state.profile || !state.profile.is_admin){ bar.innerHTML=''; return; }
+  bar.innerHTML = `<div class="row" style="margin-bottom:16px"><span class="badge">Modo administrador</span>
+    <button class="btn btn-sm" onclick="toggleAdmin()">${state.view==='admin'?'Volver a la tienda':'Abrir panel de administración'}</button></div>`;
+}
+function toggleAdmin(){ state.view = state.view==='admin' ? 'shop' : 'admin'; render(); }
+
+function renderAdminPanel(){
+  const el = document.getElementById('adminPanel');
+  const tabs = `<div class="tabs"><button class="${state.adminTab==='prod'?'active':''}" onclick="state.adminTab='prod';render()">Productos (${state.products.length})</button><button class="${state.adminTab==='cat'?'active':''}" onclick="state.adminTab='cat';render()">Categorías</button><button onclick="openUsersAdmin()">Clientes</button><button onclick="openOrders()">Pedidos</button></div>`;
+  let body='';
+  if(state.adminTab==='prod'){
+    let ps = state.products;
+    if(state.adminSearch) ps = ps.filter(p=>p.name.toLowerCase().includes(state.adminSearch)||(p.code||'').toLowerCase().includes(state.adminSearch)||p.category.toLowerCase().includes(state.adminSearch));
+    body = `<div class="row" style="margin-bottom:12px;flex-wrap:wrap">
+      <button class="btn btn-sm" onclick="openProdModal(null)">+ Nuevo producto</button>
+      <button class="btn-outline btn-sm" onclick="document.getElementById('xlsxImport').click()">Importar lista de precios (Excel)</button>
+      <input type="file" id="xlsxImport" accept=".xlsx,.xls" style="display:none" onchange="importPriceList(this.files[0])">
+      <input placeholder="Buscar producto o código..." value="${state.adminSearch}" oninput="state.adminSearch=this.value.trim().toLowerCase();render()" style="flex:1;min-width:180px">
+      </div>
+      <div id="importMsg"></div>
+      <div style="overflow-x:auto;max-height:65vh;overflow-y:auto"><table><tr><th></th><th>Producto</th><th>Código</th><th>Categoría</th><th>Precio base</th><th>Stock</th><th></th></tr>`
+      + ps.slice(0,300).map(p=>`<tr><td style="width:52px"><div class="thumb" style="width:44px;height:44px">${p.image_url?`<img src="${p.image_url}">`:''}</div></td><td>${p.name}</td><td style="color:var(--muted);font-size:12px">${p.code||''}</td><td>${p.category}</td><td>${fmt(p.price)}</td><td>${p.stock}</td><td style="white-space:nowrap"><button class="btn btn-sm" onclick="openProdModal(${p.id})">Editar</button> <button class="btn-outline btn-sm" onclick="deleteProduct(${p.id})">Eliminar</button></td></tr>`).join('')
+      + `</table></div>`
+      + (ps.length>300 ? `<div style="color:var(--muted);font-size:13px;margin-top:8px">Mostrando 300 de ${ps.length}. Usa el buscador para acotar.</div>` : '');
+  } else {
+    const ps = state.products;
+    body = `<div style="margin-bottom:12px"><button class="btn btn-sm" onclick="promptCategory()">+ Nueva categoría</button></div><div style="overflow-x:auto;max-height:65vh;overflow-y:auto"><table><tr><th>Categoría</th><th>Productos</th><th></th></tr>`
+      + state.categories.map((c,i)=>`<tr><td>${c}</td><td>${ps.filter(p=>p.category===c).length}</td><td style="white-space:nowrap"><button class="btn btn-sm" onclick="renameCategory(${i})">Renombrar</button> <button class="btn-outline btn-sm" onclick="deleteCategory(${i})">Eliminar</button></td></tr>`).join('')
+      + `</table></div>`;
+  }
+  el.innerHTML = tabs + body;
+}
+
+function render(){
+  const admin = state.view==='admin' && state.profile && state.profile.is_admin;
+  document.getElementById('grid').style.display = admin ? 'none' : '';
+  document.getElementById('catTitle').style.display = admin ? 'none' : '';
+  document.getElementById('adminPanel').style.display = admin ? 'block' : 'none';
+  renderCatSelect(); renderGrid(); renderAcct(); renderAdminBar();
+  if(admin) renderAdminPanel();
+  document.getElementById('cartCount').textContent = loadCart().reduce((s,it)=>s+it.qty,0);
+}
+
+// ───────────────────────────── Autenticación ───────────────────────────
+function switchAuth(mode){
+  document.getElementById('tabLogin').classList.toggle('active', mode==='login');
+  document.getElementById('tabReg').classList.toggle('active', mode==='reg');
+  document.getElementById('authSubmit').textContent = mode==='login' ? 'Ingresar' : 'Crear cuenta';
+  document.getElementById('authSubmit').dataset.mode = mode;
+  document.getElementById('authMsg').innerHTML = '';
+}
+
+async function submitAuth(){
+  const email = document.getElementById('authEmail').value.trim().toLowerCase();
+  const pass = document.getElementById('authPass').value;
+  const mode = document.getElementById('authSubmit').dataset.mode || 'login';
+  const msg = document.getElementById('authMsg');
+  if(!email || !pass){ msg.innerHTML='<div class="msg err">Completa correo y contraseña.</div>'; return; }
+  msg.innerHTML = '<div class="msg" style="background:var(--panel2);color:var(--muted)">Un momento...</div>';
+  if(mode==='reg'){
+    const { data, error } = await sb.auth.signUp({ email, password: pass });
+    if(error){ msg.innerHTML = `<div class="msg err">${error.message}</div>`; return; }
+    if(data.user && !data.session){
+      msg.innerHTML = '<div class="msg ok">Cuenta creada. Revisa tu correo para confirmarla y luego ingresa.</div>';
+      switchAuth('login');
+      return;
+    }
+    // sesión activa inmediatamente (confirmación de correo desactivada)
+    await sb.from('profiles').insert({ id: data.user.id, email, tipo:'Detalle', pct:0, is_admin:false });
+    msg.innerHTML = '<div class="msg ok">Cuenta creada. El precio que verás depende del tipo de cliente que te asigne la tienda.</div>';
+  } else {
+    const { error } = await sb.auth.signInWithPassword({ email, password: pass });
+    if(error){ msg.innerHTML = `<div class="msg err">${error.message}</div>`; return; }
+  }
+  await loadProfile();
+  setTimeout(()=>{ closeModal('authModal'); render(); }, 500);
+}
+
+async function changePass(){
+  const n = prompt('Nueva contraseña (mínimo 6 caracteres):');
+  if(!n) return;
+  const { error } = await sb.auth.updateUser({ password: n });
+  alert(error ? 'No se pudo actualizar: '+error.message : 'Contraseña actualizada.');
+}
+
+// ───────────────────────────── Admin: clientes ─────────────────────────
+async function openUsersAdmin(){
+  const { data: us, error } = await sb.from('profiles').select('*').order('email');
+  if(error){ alert('No se pudo cargar la lista de clientes: '+error.message); return; }
+  let html = `<h2>Clientes</h2>
+  <p style="color:var(--muted);font-size:13px">Para crear una cuenta de cliente nueva, pídele que se registre desde "Crear cuenta" en la tienda; luego edítale aquí el tipo y el % de descuento.</p>
+  <table><tr><th>Correo</th><th>Tipo</th><th>% Desc.</th><th></th></tr>`;
+  us.filter(u=>!u.is_admin).forEach(u=>{
+    html += `<tr><td>${u.email}</td>
+      <td><input id="tipo_${u.id}" value="${u.tipo}" style="width:110px"></td>
+      <td><input id="pct_${u.id}" type="number" value="${u.pct}" style="width:70px"></td>
+      <td><button class="btn-sm btn" onclick="saveUser('${u.id}')">Guardar</button> <button class="btn-sm btn-outline" onclick="deleteUser('${u.id}')">Eliminar</button></td></tr>`;
+  });
+  html += '</table>';
+  const wrap = document.createElement('div');
+  wrap.className='modal-bg show'; wrap.id='usersModal';
+  wrap.innerHTML = `<div class="modal wide"><button class="close-x" onclick="document.getElementById('usersModal').remove()">✕</button>${html}</div>`;
+  document.body.appendChild(wrap);
+}
+async function saveUser(id){
+  const tipo = document.getElementById('tipo_'+id).value;
+  const pct = parseFloat(document.getElementById('pct_'+id).value) || 0;
+  const { error } = await sb.from('profiles').update({ tipo, pct }).eq('id', id);
+  if(error){ alert('Error: '+error.message); return; }
+  document.getElementById('usersModal').remove();
+  openUsersAdmin();
+}
+async function deleteUser(id){
+  if(!confirm('Esto quita el perfil de precios del cliente (no borra su cuenta de acceso; para eso usa el panel de Supabase). ¿Continuar?')) return;
+  const { error } = await sb.from('profiles').delete().eq('id', id);
+  if(error){ alert('Error: '+error.message); return; }
+  document.getElementById('usersModal').remove();
+  openUsersAdmin();
+}
+
+// ───────────────────────────── Admin: pedidos ──────────────────────────
+async function openOrders(){
+  const { data: os, error } = await sb.from('orders').select('*, order_items(*)').order('created_at', { ascending:false }).limit(100);
+  if(error){ alert('No se pudo cargar los pedidos: '+error.message); return; }
+  const html = '<h2>Pedidos recibidos</h2>' + (os.length ? os.map(o=>`<div class="card" style="padding:12px;margin-bottom:10px">
+      <div class="row" style="justify-content:space-between"><b>${o.customer_name||'Sin nombre'} · ${o.user_email}</b><span class="badge">${new Date(o.created_at).toLocaleString('es-CO')}</span></div>
+      <div style="font-size:14px;color:var(--muted);margin:6px 0">${(o.order_items||[]).map(i=>i.name+' x'+i.qty).join(', ')}</div>
+      <b style="color:var(--accent)">Total: ${fmt(o.total)}</b></div>`).join('') : '<div class="empty">Aún no hay pedidos.</div>');
+  const wrap = document.createElement('div');
+  wrap.className='modal-bg show'; wrap.id='ordersModal';
+  wrap.innerHTML = `<div class="modal wide"><button class="close-x" onclick="document.getElementById('ordersModal').remove()">✕</button>${html}</div>`;
+  document.body.appendChild(wrap);
+}
+
+// ───────────────────────────── Admin: categorías ───────────────────────
+async function promptCategory(){
+  const c = (prompt('Nombre de la nueva categoría:')||'').trim();
+  if(!c) return;
+  const { error } = await sb.from('categories').insert({ name: toTitle(c) });
+  if(error){ alert('Error: '+error.message); return; }
+  await loadCatalog(); render();
+}
+async function renameCategory(i){
+  const old = state.categories[i];
+  const n = (prompt('Nuevo nombre:', old)||'').trim();
+  if(!n || n===old) return;
+  await sb.from('categories').update({ name:n }).eq('name', old);
+  await sb.from('products').update({ category:n }).eq('category', old);
+  if(state.curCat===old) state.curCat=n;
+  await loadCatalog(); render();
+}
+async function deleteCategory(i){
+  const c = state.categories[i];
+  if(state.products.some(p=>p.category===c)){ alert('Esta categoría tiene productos. Muévelos o elimínalos primero.'); return; }
+  if(!confirm('¿Eliminar la categoría '+c+'?')) return;
+  await sb.from('categories').delete().eq('name', c);
+  if(state.curCat===c) state.curCat='Todos';
+  await loadCatalog(); render();
+}
+
+// ───────────────────────────── Admin: productos ────────────────────────
+document.addEventListener('DOMContentLoaded', ()=>{
+  document.getElementById('pImg').addEventListener('change', e=>{ state.imgFile = e.target.files[0] || null; });
+});
+function openProdModal(id){
+  state.editId = id; state.imgFile = null;
+  document.getElementById('pCat').innerHTML = state.categories.map(c=>`<option>${c}</option>`).join('');
+  const p = id ? state.products.find(x=>x.id===id) : null;
+  document.getElementById('pTitle').textContent = p ? 'Editar producto' : 'Nuevo producto';
+  document.getElementById('pName').value = p ? p.name : '';
+  document.getElementById('pCode').value = p ? (p.code||'') : '';
+  document.getElementById('pPrice').value = p ? p.price : '';
+  document.getElementById('pStock').value = p ? p.stock : 10;
+  document.getElementById('pImg').value = '';
+  document.getElementById('pMsg').innerHTML = '';
+  if(p) document.getElementById('pCat').value = p.category;
+  document.getElementById('prodModal').classList.add('show');
+}
+async function uploadImageIfNeeded(){
+  if(!state.imgFile) return undefined; // sin cambios
+  const file = state.imgFile;
+  const path = `${Date.now()}_${file.name.replace(/[^a-zA-Z0-9.\-_]/g,'_')}`;
+  const { error } = await sb.storage.from('product-images').upload(path, file, { upsert:true });
+  if(error) throw error;
+  const { data } = sb.storage.from('product-images').getPublicUrl(path);
+  return data.publicUrl;
+}
+async function saveProduct(){
+  const name = document.getElementById('pName').value.trim();
+  const code = document.getElementById('pCode').value.trim() || null;
+  const category = document.getElementById('pCat').value;
+  const price = parseFloat(document.getElementById('pPrice').value) || 0;
+  const stock = parseInt(document.getElementById('pStock').value) || 0;
+  const msg = document.getElementById('pMsg');
+  if(!name || !price){ msg.innerHTML = '<div class="msg err">Completa nombre y precio.</div>'; return; }
+  const btn = document.getElementById('pSaveBtn'); btn.disabled = true; btn.textContent = 'Guardando...';
+  try{
+    const image_url = await uploadImageIfNeeded();
+    const payload = { name, code, category, price, stock };
+    if(image_url !== undefined) payload.image_url = image_url;
+    let error;
+    if(state.editId) ({ error } = await sb.from('products').update(payload).eq('id', state.editId));
+    else ({ error } = await sb.from('products').insert(payload));
+    if(error) throw error;
+    state.editId = null; state.imgFile = null;
+    closeModal('prodModal');
+    await loadCatalog(); render();
+  }catch(err){
+    msg.innerHTML = `<div class="msg err">${err.message}</div>`;
+  }finally{
+    btn.disabled = false; btn.textContent = 'Guardar producto';
+  }
+}
+async function deleteProduct(id){
+  if(!confirm('¿Eliminar este producto?')) return;
+  const { error } = await sb.from('products').delete().eq('id', id);
+  if(error){ alert('Error: '+error.message); return; }
+  await loadCatalog(); render();
+}
+
+// ───────────────────────────── Importar Excel ──────────────────────────
+function importPriceList(file){
+  if(!file) return;
+  const msg = document.getElementById('importMsg');
+  msg.innerHTML = '<div class="msg" style="background:var(--panel2);color:var(--muted)">Leyendo archivo...</div>';
+  const reader = new FileReader();
+  reader.onload = async (e)=>{
+    try{
+      const wb = XLSX.read(new Uint8Array(e.target.result), { type:'array' });
+      const sheet = wb.Sheets[wb.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(sheet, { header:1 });
+      let curCatName = null;
+      const newCats = new Set();
+      const toUpsert = [];
+      let skipped = 0;
+      for(let i=1;i<rows.length;i++){
+        const r = rows[i]; if(!r || r.length===0) continue;
+        const name = (r[0]||'').toString().trim();
+        const code = (r[1]||'').toString().trim();
+        const price = parseFloat(r[2]);
+        if(!name) continue;
+        if(!code){ curCatName = toTitle(name); newCats.add(curCatName); continue; }
+        if(isNaN(price)){ skipped++; continue; }
+        toUpsert.push({ name: toTitle(name), code, category: curCatName || 'Sin categoría', price, stock: 15 });
+      }
+      msg.innerHTML = `<div class="msg" style="background:var(--panel2);color:var(--muted)">Importando ${toUpsert.length} productos...</div>`;
+      // categorías nuevas primero
+      const existing = new Set(state.categories);
+      const catsToAdd = [...newCats].filter(c=>!existing.has(c)).map(name=>({name}));
+      if(catsToAdd.length) await sb.from('categories').insert(catsToAdd);
+      // upsert por código, en lotes
+      const BATCH = 200;
+      let updated=0, created=0;
+      const { data: existingProducts } = await sb.from('products').select('code').not('code','is',null);
+      const existingCodes = new Set((existingProducts||[]).map(p=>p.code));
+      for(let i=0;i<toUpsert.length;i+=BATCH){
+        const batch = toUpsert.slice(i,i+BATCH);
+        const { error } = await sb.from('products').upsert(batch, { onConflict:'code' });
+        if(error){ throw error; }
+        batch.forEach(b=> existingCodes.has(b.code) ? updated++ : created++);
+      }
+      msg.innerHTML = `<div class="msg ok">Importación completa: ${updated} actualizados, ${created} nuevos, ${skipped} filas sin precio omitidas.</div>`;
+      await loadCatalog(); render();
+    }catch(err){
+      msg.innerHTML = `<div class="msg err">No se pudo completar la importación: ${err.message}</div>`;
+    }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+// ───────────────────────────── Carrito y checkout ──────────────────────
+function addToCart(id){
+  const c = loadCart();
+  const it = c.find(x=>x.id===id);
+  if(it) it.qty++; else c.push({ id, qty:1 });
+  saveCart(c); render();
+}
+function removeFromCart(id){ saveCart(loadCart().filter(x=>x.id!==id)); render(); renderCartModal(); }
+function openCart(){ renderCartModal(); document.getElementById('cartModal').classList.add('show'); }
+function renderCartModal(){
+  const c = loadCart();
+  const rows = c.map(it=>{
+    const p = state.products.find(x=>x.id===it.id); if(!p) return '';
+    const fp = priceFor(p.price);
+    return `<div class="row" style="justify-content:space-between;margin-bottom:8px">
+      <span>${p.name} x${it.qty}</span><span>${fmt(fp*it.qty)}</span>
+      <button class="btn-outline btn-sm" onclick="removeFromCart(${p.id})">Quitar</button></div>`;
+  }).join('');
+  document.getElementById('cartItems').innerHTML = rows || '<div class="empty">Carrito vacío.</div>';
+  const total = c.reduce((s,it)=>{ const p = state.products.find(x=>x.id===it.id); return s + (p ? priceFor(p.price)*it.qty : 0); }, 0);
+  document.getElementById('cartTotal').textContent = fmt(total);
+}
+function openCheckout(){
+  if(loadCart().length===0){ alert('Tu carrito está vacío.'); return; }
+  document.getElementById('coEmail').value = state.profile ? state.profile.email : '';
+  document.getElementById('coMsg').innerHTML = '';
+  closeModal('cartModal');
+  document.getElementById('checkoutModal').classList.add('show');
+}
+async function confirmOrder(){
+  const email = document.getElementById('coEmail').value.trim();
+  const name = document.getElementById('coName').value.trim();
+  const msg = document.getElementById('coMsg');
+  if(!email){ msg.innerHTML = '<div class="msg err">Ingresa un correo de contacto.</div>'; return; }
+  const c = loadCart();
+  const items = c.map(it=>{ const p = state.products.find(x=>x.id===it.id); return { product_id:p.id, name:p.name, qty:it.qty, price:priceFor(p.price) }; });
+  const total = items.reduce((s,it)=>s+it.price*it.qty, 0);
+  const { data: order, error } = await sb.from('orders').insert({ user_email:email, customer_name:name, total }).select().single();
+  if(error){ msg.innerHTML = `<div class="msg err">No se pudo enviar el pedido: ${error.message}</div>`; return; }
+  const { error: e2 } = await sb.from('order_items').insert(items.map(it=>({ ...it, order_id: order.id })));
+  if(e2){ msg.innerHTML = `<div class="msg err">Pedido creado pero con error en los artículos: ${e2.message}</div>`; return; }
+  saveCart([]);
+  closeModal('checkoutModal');
+  alert('¡Pedido recibido! Enviaremos los datos de pago a '+email+' en las próximas horas.');
+  render();
+}
+
+// ───────────────────────────── Arranque ────────────────────────────────
+async function init(){
+  document.getElementById('authSubmit').dataset.mode = 'login';
+  await loadProfile();
+  await loadCatalog();
+  document.getElementById('loadingMsg').style.display = 'none';
+  render();
+  sb.auth.onAuthStateChange(async ()=>{ await loadProfile(); render(); });
+}
+init();
