@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: motorepuestos-shop
+    runtime: static
+    buildCommand: "echo 'sitio estático, sin build'"
+    staticPublishPath: ./public
+    pullRequestPreviewsEnabled: false
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
