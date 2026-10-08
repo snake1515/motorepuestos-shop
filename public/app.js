@@ -223,10 +223,13 @@ async function deleteUser(id){
 async function openOrders(){
   const { data: os, error } = await sb.from('orders').select('*, order_items(*)').order('created_at', { ascending:false }).limit(100);
   if(error){ alert('No se pudo cargar los pedidos: '+error.message); return; }
-  const html = '<h2>Pedidos recibidos</h2>' + (os.length ? os.map(o=>`<div class="card" style="padding:12px;margin-bottom:10px">
-      <div class="row" style="justify-content:space-between"><b>${o.customer_name||'Sin nombre'} · ${o.user_email}</b><span class="badge">${new Date(o.created_at).toLocaleString('es-CO')}</span></div>
+  const html = '<h2>Pedidos recibidos</h2>' + (os.length ? os.map(o=>{
+      const contact = [o.user_email, o.whatsapp ? '📱 '+o.whatsapp : null].filter(Boolean).join(' · ') || 'Sin contacto';
+      return `<div class="card" style="padding:12px;margin-bottom:10px">
+      <div class="row" style="justify-content:space-between;flex-wrap:wrap"><b>${o.customer_name||'Sin nombre'} · ${contact}</b><span class="badge">${new Date(o.created_at).toLocaleString('es-CO')}</span></div>
       <div style="font-size:14px;color:var(--muted);margin:6px 0">${(o.order_items||[]).map(i=>i.name+' x'+i.qty).join(', ')}</div>
-      <b style="color:var(--accent)">Total: ${fmt(o.total)}</b></div>`).join('') : '<div class="empty">Aún no hay pedidos.</div>');
+      <b style="color:var(--accent)">Total: ${fmt(o.total)}</b></div>`;
+    }).join('') : '<div class="empty">Aún no hay pedidos.</div>');
   const wrap = document.createElement('div');
   wrap.className='modal-bg show'; wrap.id='ordersModal';
   wrap.innerHTML = `<div class="modal wide"><button class="close-x" onclick="document.getElementById('ordersModal').remove()">✕</button>${html}</div>`;
@@ -394,26 +397,111 @@ function renderCartModal(){
 function openCheckout(){
   if(loadCart().length===0){ alert('Tu carrito está vacío.'); return; }
   document.getElementById('coEmail').value = state.profile ? state.profile.email : '';
+  document.getElementById('coWhatsapp').value = '';
   document.getElementById('coMsg').innerHTML = '';
   closeModal('cartModal');
   document.getElementById('checkoutModal').classList.add('show');
 }
 async function confirmOrder(){
   const email = document.getElementById('coEmail').value.trim();
+  const whatsapp = document.getElementById('coWhatsapp').value.trim();
   const name = document.getElementById('coName').value.trim();
   const msg = document.getElementById('coMsg');
-  if(!email){ msg.innerHTML = '<div class="msg err">Ingresa un correo de contacto.</div>'; return; }
+  if(!email && !whatsapp){ msg.innerHTML = '<div class="msg err">Déjanos al menos un dato de contacto: correo o WhatsApp.</div>'; return; }
+  const btn = document.getElementById('coSubmitBtn'); btn.disabled = true; btn.textContent = 'Enviando...';
   const c = loadCart();
   const items = c.map(it=>{ const p = state.products.find(x=>x.id===it.id); return { product_id:p.id, name:p.name, qty:it.qty, price:priceFor(p.price) }; });
   const total = items.reduce((s,it)=>s+it.price*it.qty, 0);
-  const { data: order, error } = await sb.from('orders').insert({ user_email:email, customer_name:name, total }).select().single();
-  if(error){ msg.innerHTML = `<div class="msg err">No se pudo enviar el pedido: ${error.message}</div>`; return; }
+  const { data: order, error } = await sb.from('orders').insert({ user_email: email||null, whatsapp: whatsapp||null, customer_name:name, total }).select().single();
+  if(error){ msg.innerHTML = `<div class="msg err">No se pudo enviar el pedido: ${error.message}</div>`; btn.disabled=false; btn.textContent='Enviar pedido'; return; }
   const { error: e2 } = await sb.from('order_items').insert(items.map(it=>({ ...it, order_id: order.id })));
-  if(e2){ msg.innerHTML = `<div class="msg err">Pedido creado pero con error en los artículos: ${e2.message}</div>`; return; }
+  if(e2){ msg.innerHTML = `<div class="msg err">Pedido creado pero con error en los artículos: ${e2.message}</div>`; btn.disabled=false; btn.textContent='Enviar pedido'; return; }
   saveCart([]);
+  btn.disabled = false; btn.textContent = 'Enviar pedido';
   closeModal('checkoutModal');
-  alert('¡Pedido recibido! Enviaremos los datos de pago a '+email+' en las próximas horas.');
+  renderReceipt({ id: order.id, items, total, name, email, whatsapp, date: order.created_at || new Date().toISOString() });
+  document.getElementById('receiptModal').classList.add('show');
   render();
+}
+
+// ───────────────────────────── Comprobante (PNG) ───────────────────────
+let lastReceipt = null;
+function renderReceipt(order){
+  lastReceipt = order;
+  const canvas = document.getElementById('receiptCanvas');
+  const W = 640;
+  const pad = 32;
+  const lineH = 30;
+  const rowsH = order.items.length * lineH;
+  const H = 300 + rowsH;
+  canvas.width = W; canvas.height = H;
+  const ctx = canvas.getContext('2d');
+
+  ctx.fillStyle = '#1B1D21'; ctx.fillRect(0,0,W,H);
+  ctx.fillStyle = '#E8871E';
+  ctx.font = '700 30px Arial';
+  ctx.fillText('MOTOREPUESTOS', pad, 50);
+  ctx.fillStyle = '#9599A2';
+  ctx.font = '14px Arial';
+  ctx.fillText('Comprobante de pedido #' + order.id, pad, 74);
+  ctx.fillText(new Date(order.date).toLocaleString('es-CO'), pad, 94);
+
+  ctx.strokeStyle = '#3A3E45'; ctx.beginPath(); ctx.moveTo(pad,110); ctx.lineTo(W-pad,110); ctx.stroke();
+
+  ctx.fillStyle = '#EDEDEF'; ctx.font = '600 15px Arial';
+  let y = 136;
+  ctx.fillText('Cliente: ' + (order.name || 'Sin nombre'), pad, y); y += 22;
+  if(order.email) { ctx.fillText('Correo: ' + order.email, pad, y); y += 22; }
+  if(order.whatsapp) { ctx.fillText('WhatsApp: ' + order.whatsapp, pad, y); y += 22; }
+  y += 10;
+  ctx.strokeStyle = '#3A3E45'; ctx.beginPath(); ctx.moveTo(pad,y); ctx.lineTo(W-pad,y); ctx.stroke();
+  y += 26;
+
+  ctx.font = '600 13px Arial'; ctx.fillStyle = '#9599A2';
+  ctx.fillText('PRODUCTO', pad, y);
+  ctx.fillText('CANT.', W-220, y);
+  ctx.fillText('SUBTOTAL', W-pad-90, y);
+  y += 16;
+
+  ctx.font = '14px Arial'; ctx.fillStyle = '#EDEDEF';
+  order.items.forEach(it=>{
+    const name = it.name.length > 38 ? it.name.slice(0,36)+'…' : it.name;
+    ctx.fillText(name, pad, y);
+    ctx.fillText(String(it.qty), W-220, y);
+    ctx.fillText(fmt(it.price*it.qty), W-pad-90, y);
+    y += lineH;
+  });
+
+  y += 4;
+  ctx.strokeStyle = '#3A3E45'; ctx.beginPath(); ctx.moveTo(pad,y); ctx.lineTo(W-pad,y); ctx.stroke();
+  y += 34;
+  ctx.font = '700 22px Arial'; ctx.fillStyle = '#E8871E';
+  ctx.fillText('TOTAL', pad, y);
+  ctx.textAlign = 'right';
+  ctx.fillText(fmt(order.total), W-pad, y);
+  ctx.textAlign = 'left';
+  y += 34;
+  ctx.font = '13px Arial'; ctx.fillStyle = '#9599A2';
+  ctx.fillText('Pendiente de pago — te contactaremos para coordinarlo.', pad, y);
+}
+function downloadReceipt(){
+  const canvas = document.getElementById('receiptCanvas');
+  const a = document.createElement('a');
+  a.download = 'pedido-' + (lastReceipt ? lastReceipt.id : '') + '.png';
+  a.href = canvas.toDataURL('image/png');
+  a.click();
+}
+async function shareReceipt(){
+  const canvas = document.getElementById('receiptCanvas');
+  const text = 'Pedido MotoRepuestos #' + (lastReceipt ? lastReceipt.id : '') + ' — Total ' + fmt(lastReceipt ? lastReceipt.total : 0);
+  canvas.toBlob(async (blob)=>{
+    const file = new File([blob], 'pedido.png', { type:'image/png' });
+    if(navigator.canShare && navigator.canShare({ files:[file] })){
+      try{ await navigator.share({ files:[file], text }); return; }catch(e){ /* usuario canceló o falló: sigue al fallback */ }
+    }
+    downloadReceipt();
+    window.open('https://wa.me/?text=' + encodeURIComponent(text + ' (adjunta la imagen descargada)'), '_blank');
+  }, 'image/png');
 }
 
 // ───────────────────────────── Arranque ────────────────────────────────
@@ -426,3 +514,4 @@ async function init(){
   sb.auth.onAuthStateChange(async ()=>{ await loadProfile(); render(); });
 }
 init();
+
