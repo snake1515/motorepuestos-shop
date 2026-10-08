@@ -14,6 +14,7 @@ let state = {
   profile: null,     // perfil del usuario logueado (tipo, pct, is_admin)
   curCat: 'Todos',
   search: '',
+  sort: 'default',
   adminSearch: '',
   view: 'shop',
   adminTab: 'prod',
@@ -64,11 +65,21 @@ function renderCatSelect(){
 }
 function setCat(c){ state.curCat=c; state.view='shop'; render(); }
 function onSearch(v){ state.search = v.trim().toLowerCase(); render(); }
+function onSortChange(v){ state.sort = v; render(); }
+// Multibúsqueda: cada palabra escrita debe aparecer (en cualquier orden) en
+// nombre, código o categoría del producto. Así "aceite 25w" sí encuentra
+// "Aceite SL 25w 60" aunque esas palabras no estén pegadas.
+function matchesSearch(p, query){
+  if(!query) return true;
+  const haystack = (p.name + ' ' + (p.code||'') + ' ' + (p.category||'')).toLowerCase();
+  return query.trim().split(/\s+/).every(word => haystack.includes(word));
+}
 
 function renderGrid(){
   let list = state.products.filter(p => state.curCat==='Todos' || p.category===state.curCat);
-  if(state.search) list = list.filter(p =>
-    p.name.toLowerCase().includes(state.search) || (p.code||'').toLowerCase().includes(state.search));
+  if(state.search) list = list.filter(p => matchesSearch(p, state.search));
+  if(state.sort==='price_asc') list = [...list].sort((a,b)=>priceFor(a.price)-priceFor(b.price));
+  else if(state.sort==='price_desc') list = [...list].sort((a,b)=>priceFor(b.price)-priceFor(a.price));
   const admin = state.profile && state.profile.is_admin;
   document.getElementById('grid').innerHTML = list.length ? list.map(p=>{
     const fp = priceFor(p.price);
@@ -111,7 +122,7 @@ function renderAdminPanel(){
   let body='';
   if(state.adminTab==='prod'){
     let ps = state.products;
-    if(state.adminSearch) ps = ps.filter(p=>p.name.toLowerCase().includes(state.adminSearch)||(p.code||'').toLowerCase().includes(state.adminSearch)||p.category.toLowerCase().includes(state.adminSearch));
+    if(state.adminSearch) ps = ps.filter(p=>matchesSearch(p, state.adminSearch));
     body = `<div class="row" style="margin-bottom:12px;flex-wrap:wrap">
       <button class="btn btn-sm" onclick="openProdModal(null)">+ Nuevo producto</button>
       <button class="btn-outline btn-sm" onclick="document.getElementById('xlsxImport').click()">Importar lista de precios (Excel)</button>
