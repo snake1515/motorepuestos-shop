@@ -49,11 +49,23 @@
 <div class="modal-bg" id="checkoutModal"><div class="modal">
   <button class="close-x" onclick="closeModal('checkoutModal')">✕</button>
   <h2>Finalizar compra</h2>
-  <p style="color:var(--muted);font-size:14px">Te enviaremos los datos de pago (transferencia/consignación) a este correo.</p>
-  <div class="field"><label>Correo de contacto</label><input id="coEmail" type="email"></div>
+  <p style="color:var(--muted);font-size:14px">Te contactaremos con los datos de pago. Déjanos al menos un dato: tu correo o tu WhatsApp.</p>
+  <div class="field"><label>Correo de contacto (opcional)</label><input id="coEmail" type="email"></div>
+  <div class="field"><label>WhatsApp (opcional)</label><input id="coWhatsapp" type="tel" placeholder="Ej: 3001234567"></div>
   <div class="field"><label>Nombre</label><input id="coName" type="text"></div>
   <div id="coMsg"></div>
-  <button class="btn" style="width:100%" onclick="confirmOrder()">Enviar pedido</button>
+  <button class="btn" style="width:100%" onclick="confirmOrder()" id="coSubmitBtn">Enviar pedido</button>
+</div></div>
+
+<div class="modal-bg" id="receiptModal"><div class="modal">
+  <button class="close-x" onclick="closeModal('receiptModal')">✕</button>
+  <h2>¡Pedido recibido!</h2>
+  <p style="color:var(--muted);font-size:14px">Guarda o comparte este comprobante; te contactaremos pronto con los datos de pago.</p>
+  <canvas id="receiptCanvas" style="width:100%;height:auto;border-radius:6px;margin-bottom:14px;border:1px solid var(--line)"></canvas>
+  <div class="row" style="flex-wrap:wrap">
+    <button class="btn" onclick="downloadReceipt()">Descargar imagen</button>
+    <button class="btn-outline" onclick="shareReceipt()">Compartir por WhatsApp</button>
+  </div>
 </div></div>
 
 <div class="modal-bg" id="prodModal"><div class="modal">
@@ -73,3 +85,4 @@
 <script src="app.js"></script>
 </body>
 </html>
+
