@@ -73,6 +73,24 @@
   </div>
 </div></div>
 
+<div class="modal-bg" id="qtyModal"><div class="modal">
+  <button class="close-x" onclick="closeModal('qtyModal')">✕</button>
+  <div class="cat-tag" id="qtyCat"></div>
+  <h2 id="qtyName" style="margin:4px 0 10px"></h2>
+  <div class="qty-thumb" id="qtyThumb"></div>
+  <div class="qty-meta"><span class="price" id="qtyPrice"></span><span class="stock" id="qtyStock"></span></div>
+  <div class="qty-row">
+    <b>Cantidad</b>
+    <div class="stepper">
+      <button onclick="qtyStep(-1)" aria-label="Menos">−</button>
+      <input id="qtyInput" type="number" inputmode="numeric" min="1" oninput="qtyType(this.value)" onblur="renderQtyModal()">
+      <button onclick="qtyStep(1)" aria-label="Más">+</button>
+    </div>
+  </div>
+  <div class="qty-sub"><span>Subtotal</span><b id="qtySub" style="color:var(--accent)"></b></div>
+  <button class="btn" style="width:100%" id="qtyAddBtn" onclick="confirmAdd()">Agregar al carrito</button>
+</div></div>
+
 <div class="modal-bg" id="prodModal"><div class="modal">
   <button class="close-x" onclick="closeModal('prodModal')">✕</button>
   <h2 id="pTitle">Nuevo producto</h2>
@@ -89,6 +107,10 @@
 <script src="config.js"></script>
 <script src="app.js"></script>
 </body>
+</html>
+
+
+
 </html>
 
 
