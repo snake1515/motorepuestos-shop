@@ -436,18 +436,20 @@ async function confirmOrder(){
   const name = document.getElementById('coName').value.trim();
   const msg = document.getElementById('coMsg');
   if(!email && !whatsapp){ msg.innerHTML = '<div class="msg err">Déjanos al menos un dato de contacto: correo o WhatsApp.</div>'; return; }
+  // Solo mandamos id y cantidad: el servidor calcula precios y total (create_order en Supabase).
+  const lines = loadCart()
+    .filter(it => state.products.some(p => p.id === it.id))
+    .map(it => ({ product_id: it.id, qty: it.qty }));
+  if(!lines.length){ msg.innerHTML = '<div class="msg err">Tu carrito está vacío.</div>'; return; }
   const btn = document.getElementById('coSubmitBtn'); btn.disabled = true; btn.textContent = 'Enviando...';
-  const c = loadCart();
-  const items = c.map(it=>{ const p = state.products.find(x=>x.id===it.id); return { product_id:p.id, name:p.name, qty:it.qty, price:priceFor(p.price) }; });
-  const total = items.reduce((s,it)=>s+it.price*it.qty, 0);
-  const { data: order, error } = await sb.from('orders').insert({ user_email: email||null, whatsapp: whatsapp||null, customer_name:name, total }).select().single();
-  if(error){ msg.innerHTML = `<div class="msg err">No se pudo enviar el pedido: ${error.message}</div>`; btn.disabled=false; btn.textContent='Enviar pedido'; return; }
-  const { error: e2 } = await sb.from('order_items').insert(items.map(it=>({ ...it, order_id: order.id })));
-  if(e2){ msg.innerHTML = `<div class="msg err">Pedido creado pero con error en los artículos: ${e2.message}</div>`; btn.disabled=false; btn.textContent='Enviar pedido'; return; }
-  saveCart([]);
+  const { data: order, error } = await sb.rpc('create_order', {
+    p_name: name, p_email: email, p_whatsapp: whatsapp, p_items: lines
+  });
   btn.disabled = false; btn.textContent = 'Enviar pedido';
+  if(error){ msg.innerHTML = `<div class="msg err">No se pudo enviar el pedido: ${error.message}</div>`; return; }
+  saveCart([]);
   closeModal('checkoutModal');
-  renderReceipt({ id: order.id, items, total, name, email, whatsapp, date: order.created_at || new Date().toISOString() });
+  renderReceipt({ id: order.id, items: order.items, total: order.total, name, email, whatsapp, date: order.created_at });
   document.getElementById('receiptModal').classList.add('show');
   render();
 }
@@ -542,5 +544,8 @@ async function init(){
   sb.auth.onAuthStateChange(async ()=>{ await loadProfile(); render(); });
 }
 init();
+
+
+
 
 
