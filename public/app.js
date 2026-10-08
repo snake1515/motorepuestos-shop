@@ -372,12 +372,29 @@ function importPriceList(file){
   reader.readAsArrayBuffer(file);
 }
 
+// ───────────────────────────── Avisos (toast) ───────────────────────────
+let toastTimer = null;
+function showToast(msg){
+  let el = document.getElementById('toast');
+  if(!el){
+    el = document.createElement('div');
+    el.id = 'toast';
+    document.body.appendChild(el);
+  }
+  el.textContent = msg;
+  el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(()=> el.classList.remove('show'), 2200);
+}
+
 // ───────────────────────────── Carrito y checkout ──────────────────────
 function addToCart(id){
   const c = loadCart();
   const it = c.find(x=>x.id===id);
   if(it) it.qty++; else c.push({ id, qty:1 });
   saveCart(c); render();
+  const p = state.products.find(x=>x.id===id);
+  showToast((p ? p.name : 'Producto') + ' agregado al carrito ✓');
 }
 function removeFromCart(id){ saveCart(loadCart().filter(x=>x.id!==id)); render(); renderCartModal(); }
 function openCart(){ renderCartModal(); document.getElementById('cartModal').classList.add('show'); }
@@ -514,4 +531,5 @@ async function init(){
   sb.auth.onAuthStateChange(async ()=>{ await loadProfile(); render(); });
 }
 init();
+
 
