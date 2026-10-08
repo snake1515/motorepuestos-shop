@@ -13,7 +13,12 @@
 <header>
   <div class="brand">MOTO<span>REPUESTOS</span></div>
   <select id="catSelect" onchange="setCat(this.value)" style="min-width:160px"></select>
-  <input id="searchBox" placeholder="Buscar por nombre o código..." oninput="onSearch(this.value)" style="flex:1;min-width:160px">
+  <input id="searchBox" placeholder="Buscar por nombre, código o categoría..." oninput="onSearch(this.value)" style="flex:1;min-width:160px">
+  <select id="sortSelect" onchange="onSortChange(this.value)" style="min-width:170px">
+    <option value="default">Orden: relevancia</option>
+    <option value="price_asc">Precio: menor a mayor</option>
+    <option value="price_desc">Precio: mayor a menor</option>
+  </select>
   <div class="right">
     <button class="iconbtn" onclick="openCart()">🛒 <span id="cartCount">0</span></button>
     <button class="iconbtn" id="passBtn" onclick="changePass()" style="display:none">Contraseña</button>
@@ -85,4 +90,5 @@
 <script src="app.js"></script>
 </body>
 </html>
+
 
