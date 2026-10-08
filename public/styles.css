@@ -82,4 +82,26 @@ footer{text-align:center;color:var(--muted);font-size:13px;padding:20px;}
   .grid{grid-template-columns:repeat(auto-fill,minmax(120px,1fr));}
 }
 
+/* ───────────────────────── Cantidad y carrito ───────────────────────── */
+.clickable{cursor:pointer;}
+.stepper{display:inline-flex;align-items:center;border:1px solid var(--line);border-radius:6px;overflow:hidden;background:var(--panel2);}
+.stepper button{background:transparent;color:var(--text);width:44px;height:44px;font-size:24px;line-height:1;border-radius:0;}
+.stepper button:disabled{opacity:.35;cursor:default;}
+.stepper input{width:64px;height:44px;text-align:center;border:none;border-left:1px solid var(--line);border-right:1px solid var(--line);border-radius:0;font-size:18px;font-weight:600;background:transparent;padding:0;-moz-appearance:textfield;}
+.stepper input::-webkit-outer-spin-button,.stepper input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0;}
+.stepper span{min-width:44px;text-align:center;font-weight:700;font-size:16px;}
+.stepper.sm button{width:36px;height:36px;font-size:20px;}
+.qty-thumb{aspect-ratio:4/3;background:var(--panel2);border-radius:6px;overflow:hidden;display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:13px;margin:0 0 12px;}
+.qty-thumb img{width:100%;height:100%;object-fit:contain;}
+.qty-meta{display:flex;justify-content:space-between;align-items:baseline;}
+.qty-row{display:flex;justify-content:space-between;align-items:center;margin:14px 0;}
+.qty-sub{display:flex;justify-content:space-between;font-size:18px;margin-bottom:14px;}
+.cart-line{padding:10px 0;border-bottom:1px solid var(--line);}
+.cart-head{display:flex;justify-content:space-between;gap:10px;align-items:baseline;}
+.cart-name{font-weight:600;font-size:15px;font-family:'Inter',sans-serif;}
+.cart-total{color:var(--accent);font-weight:700;font-family:'Barlow Condensed',sans-serif;font-size:18px;white-space:nowrap;}
+.cart-sub{font-size:12px;color:var(--muted);margin:2px 0 8px;}
+.cart-actions{display:flex;justify-content:space-between;align-items:center;}
+
+
 
