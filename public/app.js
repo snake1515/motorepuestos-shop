@@ -462,8 +462,9 @@ function renderReceipt(order){
   const W = 640;
   const pad = 32;
   const lineH = 30;
-  const rowsH = order.items.length * lineH;
-  const H = 300 + rowsH;
+  // Alto = encabezado + líneas de contacto (nombre, correo, WhatsApp) + filas + total + pie + margen
+  const contactLines = 1 + (order.email ? 1 : 0) + (order.whatsapp ? 1 : 0);
+  const H = 288 + contactLines * 22 + order.items.length * lineH;
   canvas.width = W; canvas.height = H;
   const ctx = canvas.getContext('2d');
 
@@ -495,7 +496,11 @@ function renderReceipt(order){
 
   ctx.font = '14px Arial'; ctx.fillStyle = '#EDEDEF';
   order.items.forEach(it=>{
-    const name = it.name.length > 38 ? it.name.slice(0,36)+'…' : it.name;
+    const maxW = (W - 220) - pad - 16; // espacio hasta la columna CANT.
+    let name = it.name;
+    while(name.length > 1 && ctx.measureText(name).width > maxW){
+      name = name.slice(0, -2).trimEnd() + '…';
+    }
     ctx.fillText(name, pad, y);
     ctx.fillText(String(it.qty), W-220, y);
     ctx.fillText(fmt(it.price*it.qty), W-pad-90, y);
@@ -544,6 +549,8 @@ async function init(){
   sb.auth.onAuthStateChange(async ()=>{ await loadProfile(); render(); });
 }
 init();
+
+
 
 
 
