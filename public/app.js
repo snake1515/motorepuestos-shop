@@ -237,7 +237,7 @@ async function openOrders(){
   const { data: os, error } = await sb.from('orders').select('*, order_items(*)').order('created_at', { ascending:false }).limit(100);
   if(error){ alert('No se pudo cargar los pedidos: '+error.message); return; }
   const html = '<h2>Pedidos recibidos</h2>' + (os.length ? os.map(o=>{
-      const contact = [o.user_email, o.whatsapp ? '📱 '+o.whatsapp : null].filter(Boolean).join(' · ') || 'Sin contacto';
+      const contact = [o.nit_cc ? 'NIT/CC '+o.nit_cc : null, o.user_email, o.whatsapp ? '📱 '+o.whatsapp : null].filter(Boolean).join(' · ') || 'Sin contacto';
       return `<div class="card" style="padding:12px;margin-bottom:10px">
       <div class="row" style="justify-content:space-between;flex-wrap:wrap"><b>${esc(o.customer_name||'Sin nombre')} · ${esc(contact)}</b><span class="badge">${new Date(o.created_at).toLocaleString('es-CO')}</span></div>
       <div style="font-size:14px;color:var(--muted);margin:6px 0">${(o.order_items||[]).map(i=>esc(i.name)+(i.code ? ' ['+esc(i.code)+']' : '')+' x'+i.qty).join(', ')}</div>
@@ -494,6 +494,7 @@ function openCheckout(){
   if(loadCart().length===0){ alert('Tu carrito está vacío.'); return; }
   document.getElementById('coEmail').value = state.profile ? state.profile.email : '';
   document.getElementById('coWhatsapp').value = '';
+  document.getElementById('coNit').value = '';
   document.getElementById('coMsg').innerHTML = '';
   closeModal('cartModal');
   document.getElementById('checkoutModal').classList.add('show');
@@ -501,9 +502,14 @@ function openCheckout(){
 async function confirmOrder(){
   const email = document.getElementById('coEmail').value.trim();
   const whatsapp = document.getElementById('coWhatsapp').value.trim();
+  // NIT/CC: solo dígitos y guion (ej. 900123456-7); los puntos y espacios se quitan
+  const nit = document.getElementById('coNit').value.replace(/[^0-9-]/g, '').slice(0, 20);
   const name = document.getElementById('coName').value.trim();
   const msg = document.getElementById('coMsg');
   if(!email && !whatsapp){ msg.innerHTML = '<div class="msg err">Déjanos al menos un dato de contacto: correo o WhatsApp.</div>'; return; }
+  const nitDigits = nit.replace(/-/g, '').length;
+  if(!nit){ msg.innerHTML = '<div class="msg err">Ingresa tu NIT o CC para poder facturar tu pedido.</div>'; return; }
+  if(nitDigits < 5 || nitDigits > 15){ msg.innerHTML = '<div class="msg err">Revisa tu NIT o CC: debe tener entre 5 y 15 dígitos.</div>'; return; }
   // Solo mandamos id y cantidad: el servidor calcula precios y total (create_order en Supabase).
   const lines = loadCart()
     .filter(it => state.products.some(p => p.id === it.id))
@@ -511,13 +517,13 @@ async function confirmOrder(){
   if(!lines.length){ msg.innerHTML = '<div class="msg err">Tu carrito está vacío.</div>'; return; }
   const btn = document.getElementById('coSubmitBtn'); btn.disabled = true; btn.textContent = 'Enviando...';
   const { data: order, error } = await sb.rpc('create_order', {
-    p_name: name, p_email: email, p_whatsapp: whatsapp, p_items: lines
+    p_name: name, p_email: email, p_whatsapp: whatsapp, p_items: lines, p_nit_cc: nit
   });
   btn.disabled = false; btn.textContent = 'Enviar pedido';
   if(error){ msg.innerHTML = `<div class="msg err">No se pudo enviar el pedido: ${error.message}</div>`; return; }
   saveCart([]);
   closeModal('checkoutModal');
-  renderReceipt({ id: order.id, items: order.items, total: order.total, name, email, whatsapp, date: order.created_at });
+  renderReceipt({ id: order.id, items: order.items, total: order.total, name, nit: order.nit_cc, email, whatsapp, date: order.created_at });
   document.getElementById('receiptModal').classList.add('show');
   render();
 }
@@ -531,7 +537,7 @@ function renderReceipt(order){
   const pad = 32;
   const lineH = 44;
   // Alto = encabezado + líneas de contacto (nombre, correo, WhatsApp) + filas + total + pie + margen
-  const contactLines = 1 + (order.email ? 1 : 0) + (order.whatsapp ? 1 : 0);
+  const contactLines = 1 + (order.nit ? 1 : 0) + (order.email ? 1 : 0) + (order.whatsapp ? 1 : 0);
   const H = 294 + contactLines * 22 + order.items.length * lineH;
   canvas.width = W; canvas.height = H;
   const ctx = canvas.getContext('2d');
@@ -550,6 +556,7 @@ function renderReceipt(order){
   ctx.fillStyle = '#EDEDEF'; ctx.font = '600 15px Arial';
   let y = 136;
   ctx.fillText('Cliente: ' + (order.name || 'Sin nombre'), pad, y); y += 22;
+  if(order.nit) { ctx.fillText('NIT/CC: ' + order.nit, pad, y); y += 22; }
   if(order.email) { ctx.fillText('Correo: ' + order.email, pad, y); y += 22; }
   if(order.whatsapp) { ctx.fillText('WhatsApp: ' + order.whatsapp, pad, y); y += 22; }
   y += 10;
@@ -631,6 +638,8 @@ async function init(){
   sb.auth.onAuthStateChange(async ()=>{ await loadProfile(); render(); });
 }
 init();
+
+
 
 
 
