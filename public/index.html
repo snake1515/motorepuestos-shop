@@ -100,7 +100,8 @@
   <div class="field"><label>Categoría</label><select id="pCat"></select></div>
   <div class="field"><label>Precio base (COP)</label><input id="pPrice" type="number"></div>
   <div class="field"><label>Stock</label><input id="pStock" type="number" value="10"></div>
-  <div class="field"><label>Imagen</label><input id="pImg" type="file" accept="image/*"></div>
+  <div class="field"><label>Imagen (se reduce automáticamente)</label><input id="pImg" type="file" accept="image/*"></div>
+  <div class="img-box" id="pImgBox"><div class="img-thumb"><img id="pImgPreview" alt=""></div><div class="img-info" id="pImgInfo"></div></div>
   <div id="pMsg"></div>
   <button class="btn" style="width:100%" onclick="saveProduct()" id="pSaveBtn">Guardar producto</button>
 </div></div>
@@ -109,6 +110,8 @@
 <script src="app.js"></script>
 </body>
 </html>
+
+
 
 
 
