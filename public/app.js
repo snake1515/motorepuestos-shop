@@ -501,12 +501,14 @@ function openCheckout(){
 }
 async function confirmOrder(){
   const email = document.getElementById('coEmail').value.trim();
-  const whatsapp = document.getElementById('coWhatsapp').value.trim();
+  // WhatsApp: solo dígitos (se aceptan espacios, guiones y +57 al escribirlo)
+  const whatsapp = document.getElementById('coWhatsapp').value.replace(/\D/g, '');
   // NIT/CC: solo dígitos y guion (ej. 900123456-7); los puntos y espacios se quitan
   const nit = document.getElementById('coNit').value.replace(/[^0-9-]/g, '').slice(0, 20);
   const name = document.getElementById('coName').value.trim();
   const msg = document.getElementById('coMsg');
-  if(!email && !whatsapp){ msg.innerHTML = '<div class="msg err">Déjanos al menos un dato de contacto: correo o WhatsApp.</div>'; return; }
+  if(!whatsapp){ msg.innerHTML = '<div class="msg err">Ingresa tu número de WhatsApp para poder contactarte.</div>'; return; }
+  if(whatsapp.length < 10 || whatsapp.length > 15){ msg.innerHTML = '<div class="msg err">Revisa tu WhatsApp: debe tener 10 dígitos (ej. 3001234567).</div>'; return; }
   const nitDigits = nit.replace(/-/g, '').length;
   if(!nit){ msg.innerHTML = '<div class="msg err">Ingresa tu NIT o CC para poder facturar tu pedido.</div>'; return; }
   if(nitDigits < 5 || nitDigits > 15){ msg.innerHTML = '<div class="msg err">Revisa tu NIT o CC: debe tener entre 5 y 15 dígitos.</div>'; return; }
@@ -523,7 +525,7 @@ async function confirmOrder(){
   if(error){ msg.innerHTML = `<div class="msg err">No se pudo enviar el pedido: ${error.message}</div>`; return; }
   saveCart([]);
   closeModal('checkoutModal');
-  renderReceipt({ id: order.id, items: order.items, total: order.total, name, nit: order.nit_cc, email, whatsapp, date: order.created_at });
+  renderReceipt({ id: order.id, items: order.items, total: order.total, name, nit: order.nit_cc, email, whatsapp: order.whatsapp || whatsapp, date: order.created_at });
   document.getElementById('receiptModal').classList.add('show');
   render();
 }
@@ -638,6 +640,8 @@ async function init(){
   sb.auth.onAuthStateChange(async ()=>{ await loadProfile(); render(); });
 }
 init();
+
+
 
 
 
