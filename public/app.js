@@ -277,7 +277,7 @@ async function deleteCategory(i){
 
 // ───────────────────────────── Admin: productos ────────────────────────
 document.addEventListener('DOMContentLoaded', ()=>{
-  document.getElementById('pImg').addEventListener('change', e=>{ state.imgFile = e.target.files[0] || null; });
+  document.getElementById('pImg').addEventListener('change', onImageChosen);
 });
 function openProdModal(id){
   state.editId = id; state.imgFile = null;
@@ -290,14 +290,144 @@ function openProdModal(id){
   document.getElementById('pStock').value = p ? p.stock : 10;
   document.getElementById('pImg').value = '';
   document.getElementById('pMsg').innerHTML = '';
+  resetImagePreview(p);
   if(p) document.getElementById('pCat').value = p.category;
   document.getElementById('prodModal').classList.add('show');
 }
+// ───────────────────────────── Optimización de imágenes ─────────────────
+// Antes de subir una foto a Storage se reduce aquí, en el navegador:
+//  1) se limita el lado mayor (la tarjeta del catálogo mide ~220 px; 1200 px cubre
+//     pantallas retina y el modal de producto),
+//  2) se reduce por pasos (mitades) para conservar la nitidez,
+//  3) se busca la MAYOR calidad que quepa en el peso objetivo (WebP; JPEG si el
+//     navegador no puede codificar WebP).
+// Si la foto ya es liviana y pequeña, se sube tal cual (no se recomprime para nada).
+const IMG_MAX_SIDE  = 1200;          // px del lado mayor
+const IMG_MAX_BYTES = 300 * 1024;    // peso objetivo por foto
+const IMG_Q_MAX = 0.95, IMG_Q_MIN = 0.55;   // 0.95 = casi sin pérdida visible; por encima el peso se dispara sin mejora notable
+
+function fmtBytes(n){
+  return n >= 1048576 ? (n/1048576).toFixed(1).replace('.', ',') + ' MB' : Math.max(1, Math.round(n/1024)) + ' KB';
+}
+function loadImage(file){
+  // <img> aplica la orientación EXIF (fotos de celular), así no salen giradas
+  return new Promise((resolve, reject)=>{
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = ()=>{ URL.revokeObjectURL(url); resolve(img); };
+    img.onerror = ()=>{ URL.revokeObjectURL(url); reject(new Error('No se pudo leer la imagen')); };
+    img.src = url;
+  });
+}
+function canvasToBlob(canvas, type, q){ return new Promise(res => canvas.toBlob(res, type, q)); }
+function scaledCanvas(img, w, h, opaque){
+  let src = img, cw = img.naturalWidth, ch = img.naturalHeight;
+  while(cw / 2 >= w && ch / 2 >= h){            // reducción por pasos: más nítida que un solo salto
+    const c = document.createElement('canvas');
+    c.width = Math.round(cw / 2); c.height = Math.round(ch / 2);
+    const x = c.getContext('2d'); x.imageSmoothingQuality = 'high'; x.drawImage(src, 0, 0, c.width, c.height);
+    src = c; cw = c.width; ch = c.height;
+  }
+  const out = document.createElement('canvas'); out.width = w; out.height = h;
+  const x = out.getContext('2d');
+  if(opaque){ x.fillStyle = '#fff'; x.fillRect(0, 0, w, h); }   // JPEG no tiene transparencia
+  x.imageSmoothingQuality = 'high'; x.drawImage(src, 0, 0, w, h);
+  return out;
+}
+async function optimizeImage(file){
+  const img = await loadImage(file);
+  const W0 = img.naturalWidth, H0 = img.naturalHeight;
+  const webFormat = /^image\/(jpeg|png|webp)$/.test(file.type);
+  if(webFormat && Math.max(W0, H0) <= IMG_MAX_SIDE && file.size <= IMG_MAX_BYTES){
+    return { file, width: W0, height: H0, original: file.size, changed: false };
+  }
+  let scale = Math.min(1, IMG_MAX_SIDE / Math.max(W0, H0));
+  let type = 'image/webp';
+  let last = null;
+  for(let attempt = 0; attempt < 6; attempt++){
+    const w = Math.max(1, Math.round(W0 * scale)), h = Math.max(1, Math.round(H0 * scale));
+    let canvas = scaledCanvas(img, w, h, type === 'image/jpeg');
+    let blob = await canvasToBlob(canvas, type, IMG_Q_MAX);
+    if(blob && blob.type !== type && type === 'image/webp'){   // este navegador no codifica WebP
+      type = 'image/jpeg';
+      canvas = scaledCanvas(img, w, h, true);
+      blob = await canvasToBlob(canvas, type, IMG_Q_MAX);
+    }
+    if(!blob) throw new Error('No se pudo procesar la imagen');
+    last = { blob, w, h };
+    if(blob.size > IMG_MAX_BYTES){
+      // búsqueda binaria: la mayor calidad que cabe en el peso objetivo
+      let lo = IMG_Q_MIN, hi = IMG_Q_MAX, best = null;
+      for(let i = 0; i < 6; i++){
+        const q = (lo + hi) / 2;
+        const b = await canvasToBlob(canvas, type, q);
+        if(b && b.size <= IMG_MAX_BYTES){ best = b; lo = q; } else { hi = q; }
+      }
+      if(!best){ scale *= 0.85; continue; }          // ni con calidad mínima cabe: se achica un poco más
+      last = { blob: best, w, h };
+    }
+    break;
+  }
+  const { blob, w, h } = last;
+  // nunca devolver un archivo más pesado que el original si no hubo reducción de tamaño
+  if(webFormat && w === W0 && h === H0 && blob.size >= file.size){
+    return { file, width: W0, height: H0, original: file.size, changed: false };
+  }
+  const base = (file.name || 'foto').replace(/\.[^.]+$/, '');
+  const ext = blob.type === 'image/webp' ? '.webp' : '.jpg';
+  return { file: new File([blob], base + ext, { type: blob.type }), width: w, height: h, original: file.size, changed: true };
+}
+
+// Selección de foto en el formulario de producto: se optimiza al elegirla y se muestra
+// vista previa + peso antes/después. Al guardar solo se sube el archivo ya optimizado.
+let imgToken = 0, previewUrl = null;
+function resetImagePreview(p){
+  imgToken++;                                        // cancela cualquier optimización pendiente
+  if(previewUrl){ URL.revokeObjectURL(previewUrl); previewUrl = null; }
+  const box = document.getElementById('pImgBox'), img = document.getElementById('pImgPreview'), info = document.getElementById('pImgInfo');
+  document.getElementById('pSaveBtn').disabled = false;
+  info.textContent = ''; info.className = 'img-info';
+  if(p && p.image_url){ img.src = p.image_url; info.textContent = 'Imagen actual'; box.classList.add('show'); }
+  else { img.removeAttribute('src'); box.classList.remove('show'); }
+}
+async function onImageChosen(e){
+  const input = e.target, f = input.files[0] || null;
+  const token = ++imgToken;
+  const box = document.getElementById('pImgBox'), img = document.getElementById('pImgPreview'), info = document.getElementById('pImgInfo');
+  const btn = document.getElementById('pSaveBtn');
+  state.imgFile = null;
+  if(!f){
+    const p = state.editId ? state.products.find(x => x.id === state.editId) : null;
+    resetImagePreview(p); return;
+  }
+  btn.disabled = true;
+  box.classList.add('show'); info.className = 'img-info'; info.textContent = 'Optimizando imagen...';
+  try{
+    const r = await optimizeImage(f);
+    if(token !== imgToken) return;                   // eligió otra foto mientras tanto
+    state.imgFile = r.file;
+    if(previewUrl) URL.revokeObjectURL(previewUrl);
+    previewUrl = URL.createObjectURL(r.file); img.src = previewUrl;
+    info.className = 'img-info ok';
+    info.textContent = r.changed
+      ? `Optimizada: ${fmtBytes(r.original)} → ${fmtBytes(r.file.size)} · ${r.width}×${r.height} px`
+      : `La foto ya es liviana (${fmtBytes(r.file.size)} · ${r.width}×${r.height} px): se sube sin cambios.`;
+  }catch(err){
+    if(token !== imgToken) return;
+    input.value = ''; state.imgFile = null;
+    img.removeAttribute('src');
+    info.className = 'img-info err';
+    info.textContent = 'No se pudo leer esta imagen. Usa una foto JPG, PNG o WebP.';
+  }finally{
+    if(token === imgToken) btn.disabled = false;
+  }
+}
+
 async function uploadImageIfNeeded(){
   if(!state.imgFile) return undefined; // sin cambios
   const file = state.imgFile;
   const path = `${Date.now()}_${file.name.replace(/[^a-zA-Z0-9.\-_]/g,'_')}`;
-  const { error } = await sb.storage.from('product-images').upload(path, file, { upsert:true });
+  const { error } = await sb.storage.from('product-images').upload(path, file, { upsert:true, contentType: file.type, cacheControl: '31536000' });
   if(error) throw error;
   const { data } = sb.storage.from('product-images').getPublicUrl(path);
   return data.publicUrl;
@@ -640,6 +770,8 @@ async function init(){
   sb.auth.onAuthStateChange(async ()=>{ await loadProfile(); render(); });
 }
 init();
+
+
 
 
 
