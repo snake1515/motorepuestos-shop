@@ -138,7 +138,7 @@ function renderAdminPanel(){
       <input type="file" id="xlsxImport" accept=".xlsx,.xls" style="display:none" onchange="importPriceList(this.files[0])">
       <input placeholder="Buscar producto o código..." value="${state.adminSearch}" oninput="state.adminSearch=this.value.trim().toLowerCase();render()" style="flex:1;min-width:180px">
       </div>
-      <div id="importMsg"></div>
+      <div id="importMsg">${state.importMsg||''}</div>
       <div style="overflow-x:auto;max-height:65vh;overflow-y:auto"><table><tr><th></th><th>Producto</th><th>Código</th><th>Categoría</th><th>Precio base</th><th>Stock</th><th></th></tr>`
       + ps.slice(0,300).map(p=>`<tr><td style="width:52px"><div class="thumb" style="width:44px;height:44px">${p.image_url?`<img src="${p.image_url}">`:''}</div></td><td>${p.name}</td><td style="color:var(--muted);font-size:12px">${p.code||''}</td><td>${p.category}</td><td>${fmt(p.price)}</td><td>${p.stock}</td><td style="white-space:nowrap"><button class="btn btn-sm" onclick="openProdModal(${p.id})">Editar</button> <button class="btn-outline btn-sm" onclick="deleteProduct(${p.id})">Eliminar</button></td></tr>`).join('')
       + `</table></div>`
@@ -482,6 +482,7 @@ async function deleteProduct(id){
 function importPriceList(file){
   if(!file) return;
   const msg = document.getElementById('importMsg');
+  state.importMsg = '';
   msg.innerHTML = '<div class="msg" style="background:var(--panel2);color:var(--muted)">Leyendo archivo...</div>';
   const reader = new FileReader();
   reader.onload = async (e)=>{
@@ -513,16 +514,24 @@ function importPriceList(file){
       let updated=0, created=0;
       const { data: existingProducts } = await sb.from('products').select('code').not('code','is',null);
       const existingCodes = new Set((existingProducts||[]).map(p=>p.code));
-      for(let i=0;i<toUpsert.length;i+=BATCH){
-        const batch = toUpsert.slice(i,i+BATCH);
-        const { error } = await sb.from('products').upsert(batch, { onConflict:'code' });
-        if(error){ throw error; }
-        batch.forEach(b=> existingCodes.has(b.code) ? updated++ : created++);
+      // Productos que ya existen: se actualizan nombre, categoría y precio, pero NO el
+      // stock (así no se pierde el inventario ajustado a mano). Los nuevos entran con stock 15.
+      const existingRows = toUpsert.filter(b => existingCodes.has(b.code)).map(({ stock, ...rest }) => rest);
+      const newRows = toUpsert.filter(b => !existingCodes.has(b.code));
+      for(const rows of [existingRows, newRows]){
+        for(let i=0;i<rows.length;i+=BATCH){
+          const batch = rows.slice(i,i+BATCH);
+          const { error } = await sb.from('products').upsert(batch, { onConflict:'code' });
+          if(error){ throw error; }
+        }
       }
-      msg.innerHTML = `<div class="msg ok">Importación completa: ${updated} actualizados, ${created} nuevos, ${skipped} filas sin precio omitidas.</div>`;
+      updated = existingRows.length; created = newRows.length;
+      // Se guarda en el estado para que el mensaje siga visible después de redibujar el panel
+      state.importMsg = `<div class="msg ok">Importación completa: ${updated} actualizados (stock sin cambios), ${created} nuevos, ${skipped} filas sin precio omitidas.</div>`;
       await loadCatalog(); render();
     }catch(err){
-      msg.innerHTML = `<div class="msg err">No se pudo completar la importación: ${err.message}</div>`;
+      state.importMsg = `<div class="msg err">No se pudo completar la importación: ${esc(err.message)}</div>`;
+      msg.innerHTML = state.importMsg;
     }
   };
   reader.readAsArrayBuffer(file);
