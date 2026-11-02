@@ -61,11 +61,14 @@ async function loadProfile(){
 // ───────────────────────────── Render ──────────────────────────────────
 function renderCatSelect(){
   const cats=['Todos', ...state.categories];
-  document.getElementById('catSelect').innerHTML = cats.map(c=>
-    `<option value="${c}" ${c===state.curCat?'selected':''}>${c}</option>`).join('');
-  document.getElementById('catTitle').textContent = state.curCat==='Todos' ? 'Catálogo' : state.curCat;
+  document.getElementById('catChips').innerHTML = cats.map((c,i)=>
+    `<button class="chip ${c===state.curCat?'active':''}" onclick="setCatIdx(${i})" aria-pressed="${c===state.curCat}">${esc(c)}</button>`).join('');
+  const act = document.querySelector('#catChips .chip.active');
+  if(act && act.scrollIntoView) act.scrollIntoView({ block: 'nearest', inline: 'center' });
+  document.getElementById('catTitle').textContent = state.search ? 'Resultados' : (state.curCat==='Todos' ? 'Catálogo' : state.curCat);
 }
 function setCat(c){ state.curCat=c; state.view='shop'; render(); }
+function setCatIdx(i){ setCat(['Todos', ...state.categories][i] || 'Todos'); window.scrollTo({ top: 0, behavior: 'smooth' }); }
 function onSearch(v){ state.search = v.trim().toLowerCase(); render(); }
 function onSortChange(v){ state.sort = v; render(); }
 // Multibúsqueda: cada palabra escrita debe aparecer (en cualquier orden) en
@@ -83,26 +86,30 @@ function renderGrid(){
   if(state.sort==='price_asc') list = [...list].sort((a,b)=>priceFor(a.price)-priceFor(b.price));
   else if(state.sort==='price_desc') list = [...list].sort((a,b)=>priceFor(b.price)-priceFor(a.price));
   const admin = state.profile && state.profile.is_admin;
+  const cnt = document.getElementById('resultCount');
+  if(cnt) cnt.textContent = list.length === 1 ? '1 producto' : list.length.toLocaleString('es-CO') + ' productos';
   document.getElementById('grid').innerHTML = list.length ? list.map(p=>{
     const fp = priceFor(p.price);
     const showBase = state.profile && fp !== p.price;
-    return `<div class="card">
-      <div class="thumb clickable" onclick="openQty(${p.id})">${p.image_url ? `<img src="${esc(p.image_url)}" loading="lazy" alt="">` : 'Sin imagen'}</div>
+    const out = p.stock < 1;
+    return `<article class="card">
+      <button class="thumb" onclick="openQty(${p.id})" ${out?'disabled':''} aria-label="Ver ${esc(p.name)}">${p.image_url ? `<img src="${esc(p.image_url)}" loading="lazy" alt="">` : NO_IMG}</button>
       <div class="card-body">
-        <div class="cat-tag">${esc(p.category)}${p.code ? ' · '+esc(p.code) : ''}</div>
-        <div class="pname clickable" onclick="openQty(${p.id})">${esc(p.name)}</div>
-        ${showBase ? `<div class="price-base">${fmt(p.price)}</div>` : ''}
-        <div class="price">${fmt(fp)}</div>
-        <div class="stock">Stock: ${p.stock}</div>
-        <button class="btn btn-sm" style="margin-top:6px" ${p.stock<1?'disabled':''} onclick="openQty(${p.id})">${p.stock<1?'Agotado':'Agregar al carrito'}</button>
-        ${admin ? `<button class="btn-outline btn-sm" onclick="deleteProduct(${p.id})">Eliminar</button>` : ''}
-      </div></div>`;
-  }).join('') : '<div class="empty">No hay productos que coincidan.</div>';
+        ${p.code ? `<span class="code">${esc(p.code)}</span>` : ''}
+        <h3 class="pname" onclick="openQty(${p.id})">${esc(p.name)}</h3>
+        <div class="cat-tag">${esc(p.category)}</div>
+        <div class="price-row"><span class="price">${fmt(fp)}</span>${showBase ? `<span class="price-base">${fmt(p.price)}</span>` : ''}</div>
+        <div class="stock ${out?'out':''}">${out ? 'Agotado' : p.stock + (p.stock===1 ? ' disponible' : ' disponibles')}</div>
+        <button class="btn btn-sm" ${out?'disabled':''} onclick="openQty(${p.id})">${out?'Agotado':'Agregar'}</button>
+        ${admin ? `<button class="btn-outline btn-sm" style="margin-top:6px" onclick="deleteProduct(${p.id})">Eliminar</button>` : ''}
+      </div></article>`;
+  }).join('') : `<div class="empty">No encontramos productos${state.search ? ' para “' + esc(state.search) + '”' : ''}. Prueba con otra palabra o con el código.</div>`;
 }
+const NO_IMG = '<span class="noimg"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" aria-hidden="true"><path d="M4 8h3l1.5-2h7L17 8h3v11H4z"/><circle cx="12" cy="13.5" r="3.5"/></svg>Sin foto</span>';
 
 function renderAcct(){
   const btn = document.getElementById('acctBtn');
-  btn.textContent = state.profile ? `${state.profile.email.split('@')[0]} · salir` : 'Ingresar';
+  btn.innerHTML = `<span class="acct-label">${state.profile ? esc(state.profile.email.split('@')[0]) + ' · salir' : 'Ingresar'}</span>`;
   document.getElementById('passBtn').style.display = state.profile ? '' : 'none';
 }
 async function onAcctClick(){
@@ -148,7 +155,10 @@ function renderAdminPanel(){
 function render(){
   const admin = state.view==='admin' && state.profile && state.profile.is_admin;
   document.getElementById('grid').style.display = admin ? 'none' : '';
-  document.getElementById('catTitle').style.display = admin ? 'none' : '';
+  document.getElementById('toolbar').style.display = admin ? 'none' : '';
+  document.getElementById('catChips').style.display = admin ? 'none' : '';
+  // La presentación solo se muestra al entrar (sin búsqueda ni categoría elegida)
+  document.getElementById('intro').style.display = (admin || state.search || state.curCat!=='Todos') ? 'none' : '';
   document.getElementById('adminPanel').style.display = admin ? 'block' : 'none';
   renderCatSelect(); renderGrid(); renderAcct(); renderAdminBar();
   if(admin) renderAdminPanel();
@@ -180,7 +190,10 @@ async function submitAuth(){
       return;
     }
     // sesión activa inmediatamente (confirmación de correo desactivada)
-    await sb.from('profiles').insert({ id: data.user.id, email, tipo:'Detalle', pct:0, is_admin:false });
+    // El perfil lo crea la base de datos (trigger de migracion_seguridad_perfiles.sql).
+    // Este insert solo queda de respaldo si la migración aún no se ha corrido; si ya
+    // existe el perfil o la política lo bloquea, el error se ignora.
+    await sb.from('profiles').insert({ id: data.user.id, email });
     msg.innerHTML = '<div class="msg ok">Cuenta creada. El precio que verás depende del tipo de cliente que te asigne la tienda.</div>';
   } else {
     const { error } = await sb.auth.signInWithPassword({ email, password: pass });
@@ -662,6 +675,9 @@ async function confirmOrder(){
 
 // ───────────────────────────── Comprobante (PNG) ───────────────────────
 let lastReceipt = null;
+// Logo precargado para dibujarlo en el comprobante
+const LOGO_IMG = new Image();
+LOGO_IMG.src = 'logo-jk2m.svg';
 function renderReceipt(order){
   lastReceipt = order;
   const canvas = document.getElementById('receiptCanvas');
@@ -674,34 +690,41 @@ function renderReceipt(order){
   canvas.width = W; canvas.height = H;
   const ctx = canvas.getContext('2d');
 
-  ctx.fillStyle = '#1B1D21'; ctx.fillRect(0,0,W,H);
-  ctx.fillStyle = '#E8871E';
-  ctx.font = '700 30px Arial';
-  ctx.fillText('MOTOREPUESTOS', pad, 50);
-  ctx.fillStyle = '#9599A2';
-  ctx.font = '14px Arial';
-  ctx.fillText('Comprobante de pedido #' + order.id, pad, 74);
-  ctx.fillText(new Date(order.date).toLocaleString('es-CO'), pad, 94);
+  ctx.fillStyle = '#1B2026'; ctx.fillRect(0,0,W,H);
+  // Logo (placa JK2M) a la izquierda; número y fecha del pedido a la derecha
+  if(LOGO_IMG.complete && LOGO_IMG.naturalWidth){
+    ctx.drawImage(LOGO_IMG, pad, 22, 140, 70);
+  } else {
+    ctx.fillStyle = '#FFC629'; ctx.font = '700 30px Arial';
+    ctx.fillText('JK2M REPUESTOS', pad, 64);
+  }
+  ctx.textAlign = 'right';
+  ctx.fillStyle = '#F2F4F6'; ctx.font = '700 20px Arial';
+  ctx.fillText('Pedido #' + order.id, W - pad, 50);
+  ctx.fillStyle = '#9AA4B0'; ctx.font = '14px Arial';
+  ctx.fillText(new Date(order.date).toLocaleString('es-CO'), W - pad, 74);
+  ctx.fillText('Comprobante de pedido', W - pad, 94);
+  ctx.textAlign = 'left';
 
-  ctx.strokeStyle = '#3A3E45'; ctx.beginPath(); ctx.moveTo(pad,110); ctx.lineTo(W-pad,110); ctx.stroke();
+  ctx.strokeStyle = '#39424E'; ctx.beginPath(); ctx.moveTo(pad,110); ctx.lineTo(W-pad,110); ctx.stroke();
 
-  ctx.fillStyle = '#EDEDEF'; ctx.font = '600 15px Arial';
+  ctx.fillStyle = '#F2F4F6'; ctx.font = '600 15px Arial';
   let y = 136;
   ctx.fillText('Cliente: ' + (order.name || 'Sin nombre'), pad, y); y += 22;
   if(order.nit) { ctx.fillText('NIT/CC: ' + order.nit, pad, y); y += 22; }
   if(order.email) { ctx.fillText('Correo: ' + order.email, pad, y); y += 22; }
   if(order.whatsapp) { ctx.fillText('WhatsApp: ' + order.whatsapp, pad, y); y += 22; }
   y += 10;
-  ctx.strokeStyle = '#3A3E45'; ctx.beginPath(); ctx.moveTo(pad,y); ctx.lineTo(W-pad,y); ctx.stroke();
+  ctx.strokeStyle = '#39424E'; ctx.beginPath(); ctx.moveTo(pad,y); ctx.lineTo(W-pad,y); ctx.stroke();
   y += 26;
 
-  ctx.font = '600 13px Arial'; ctx.fillStyle = '#9599A2';
+  ctx.font = '600 13px Arial'; ctx.fillStyle = '#9AA4B0';
   ctx.fillText('PRODUCTO', pad, y);
   ctx.fillText('CANT.', W-220, y);
   ctx.fillText('SUBTOTAL', W-pad-90, y);
   y += 22;
 
-  ctx.font = '14px Arial'; ctx.fillStyle = '#EDEDEF';
+  ctx.font = '14px Arial'; ctx.fillStyle = '#F2F4F6';
   order.items.forEach(it=>{
     const maxW = (W - 220) - pad - 16; // espacio hasta la columna CANT.
     let name = it.name;
@@ -716,28 +739,28 @@ function renderReceipt(order){
     ctx.font = '600 12px Arial';
     if(it.code){
       const codeTxt = 'Cód. ' + it.code;
-      ctx.fillStyle = '#E8871E'; ctx.fillText(codeTxt, x, y + 16);
+      ctx.fillStyle = '#FFC629'; ctx.fillText(codeTxt, x, y + 16);
       x += ctx.measureText(codeTxt).width;
-      ctx.font = '12px Arial'; ctx.fillStyle = '#9599A2';
+      ctx.font = '12px Arial'; ctx.fillStyle = '#9AA4B0';
       ctx.fillText('  ·  ' + fmt(it.price) + ' c/u', x, y + 16);
     } else {
-      ctx.font = '12px Arial'; ctx.fillStyle = '#9599A2';
+      ctx.font = '12px Arial'; ctx.fillStyle = '#9AA4B0';
       ctx.fillText(fmt(it.price) + ' c/u', x, y + 16);
     }
-    ctx.font = '14px Arial'; ctx.fillStyle = '#EDEDEF';
+    ctx.font = '14px Arial'; ctx.fillStyle = '#F2F4F6';
     y += lineH;
   });
 
   y += 4;
-  ctx.strokeStyle = '#3A3E45'; ctx.beginPath(); ctx.moveTo(pad,y); ctx.lineTo(W-pad,y); ctx.stroke();
+  ctx.strokeStyle = '#39424E'; ctx.beginPath(); ctx.moveTo(pad,y); ctx.lineTo(W-pad,y); ctx.stroke();
   y += 34;
-  ctx.font = '700 22px Arial'; ctx.fillStyle = '#E8871E';
+  ctx.font = '700 22px Arial'; ctx.fillStyle = '#FFC629';
   ctx.fillText('TOTAL', pad, y);
   ctx.textAlign = 'right';
   ctx.fillText(fmt(order.total), W-pad, y);
   ctx.textAlign = 'left';
   y += 34;
-  ctx.font = '13px Arial'; ctx.fillStyle = '#9599A2';
+  ctx.font = '13px Arial'; ctx.fillStyle = '#9AA4B0';
   ctx.fillText('Pendiente de pago — te contactaremos para coordinarlo.', pad, y);
 }
 function downloadReceipt(){
@@ -749,7 +772,7 @@ function downloadReceipt(){
 }
 async function shareReceipt(){
   const canvas = document.getElementById('receiptCanvas');
-  const text = 'Pedido MotoRepuestos #' + (lastReceipt ? lastReceipt.id : '') + ' — Total ' + fmt(lastReceipt ? lastReceipt.total : 0);
+  const text = 'Pedido JK2M Repuestos #' + (lastReceipt ? lastReceipt.id : '') + ' — Total ' + fmt(lastReceipt ? lastReceipt.total : 0);
   canvas.toBlob(async (blob)=>{
     const file = new File([blob], 'pedido.png', { type:'image/png' });
     if(navigator.canShare && navigator.canShare({ files:[file] })){

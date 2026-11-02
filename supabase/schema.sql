@@ -1,5 +1,7 @@
 -- MotoRepuestos — esquema de base de datos para Supabase
 -- Ejecuta este archivo completo en Supabase: Dashboard > SQL Editor > New query > pega y corre.
+-- Orden para una instalación nueva: schema.sql, migracion_pedidos.sql,
+-- migracion_seguridad_perfiles.sql y, si quieres el catálogo, seed.sql.
 
 -- ───────────────────────────── Categorías ─────────────────────────────
 create table if not exists categories (
@@ -80,24 +82,21 @@ create policy products_read_all on products for select using (true);
 drop policy if exists products_write_admin on products;
 create policy products_write_admin on products for all using (is_admin()) with check (is_admin());
 
--- Perfiles: cada quien ve/edita el suyo; el admin ve y edita todos
+-- Perfiles: cada cliente solo VE el suyo; crear/editar/borrar es solo del admin.
+-- (El perfil se crea solo al registrarse: ver migracion_seguridad_perfiles.sql)
 drop policy if exists profiles_select on profiles;
 create policy profiles_select on profiles for select using (auth.uid() = id or is_admin());
 drop policy if exists profiles_insert on profiles;
-create policy profiles_insert on profiles for insert with check (auth.uid() = id);
 drop policy if exists profiles_update on profiles;
-create policy profiles_update on profiles for update using (auth.uid() = id or is_admin()) with check (auth.uid() = id or is_admin());
 drop policy if exists profiles_delete_admin on profiles;
 create policy profiles_delete_admin on profiles for delete using (is_admin());
 
--- Pedidos: cualquiera (incluso sin cuenta) puede crear uno al pagar;
+-- Pedidos: se crean SOLO con la función create_order (migracion_pedidos.sql);
 -- solo el admin puede verlos
 drop policy if exists orders_insert_all on orders;
-create policy orders_insert_all on orders for insert with check (true);
 drop policy if exists orders_read_admin on orders;
 create policy orders_read_admin on orders for select using (is_admin());
 drop policy if exists order_items_insert_all on order_items;
-create policy order_items_insert_all on order_items for insert with check (true);
 drop policy if exists order_items_read_admin on order_items;
 create policy order_items_read_admin on order_items for select using (is_admin());
 
