@@ -677,7 +677,7 @@ async function confirmOrder(){
 let lastReceipt = null;
 // Logo precargado para dibujarlo en el comprobante
 const LOGO_IMG = new Image();
-LOGO_IMG.src = 'logo-jk2m.svg';
+LOGO_IMG.src = 'logo-jk2m.png';
 function renderReceipt(order){
   lastReceipt = order;
   const canvas = document.getElementById('receiptCanvas');
@@ -693,9 +693,9 @@ function renderReceipt(order){
   ctx.fillStyle = '#1B2026'; ctx.fillRect(0,0,W,H);
   // Logo (placa JK2M) a la izquierda; número y fecha del pedido a la derecha
   if(LOGO_IMG.complete && LOGO_IMG.naturalWidth){
-    ctx.drawImage(LOGO_IMG, pad, 22, 140, 70);
+    ctx.drawImage(LOGO_IMG, pad, 20, 176, 75);
   } else {
-    ctx.fillStyle = '#FFC629'; ctx.font = '700 30px Arial';
+    ctx.fillStyle = '#99F903'; ctx.font = '700 30px Arial';
     ctx.fillText('JK2M REPUESTOS', pad, 64);
   }
   ctx.textAlign = 'right';
@@ -739,7 +739,7 @@ function renderReceipt(order){
     ctx.font = '600 12px Arial';
     if(it.code){
       const codeTxt = 'Cód. ' + it.code;
-      ctx.fillStyle = '#FFC629'; ctx.fillText(codeTxt, x, y + 16);
+      ctx.fillStyle = '#99F903'; ctx.fillText(codeTxt, x, y + 16);
       x += ctx.measureText(codeTxt).width;
       ctx.font = '12px Arial'; ctx.fillStyle = '#9AA4B0';
       ctx.fillText('  ·  ' + fmt(it.price) + ' c/u', x, y + 16);
@@ -754,7 +754,7 @@ function renderReceipt(order){
   y += 4;
   ctx.strokeStyle = '#39424E'; ctx.beginPath(); ctx.moveTo(pad,y); ctx.lineTo(W-pad,y); ctx.stroke();
   y += 34;
-  ctx.font = '700 22px Arial'; ctx.fillStyle = '#FFC629';
+  ctx.font = '700 22px Arial'; ctx.fillStyle = '#99F903';
   ctx.fillText('TOTAL', pad, y);
   ctx.textAlign = 'right';
   ctx.fillText(fmt(order.total), W-pad, y);

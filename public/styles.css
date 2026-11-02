@@ -1,5 +1,5 @@
 /* JK2M Repuestos — estilos de la tienda
-   Paleta inspirada en la placa amarilla de moto colombiana (el logo) sobre asfalto.
+   Paleta tomada del logo JK2M: verde lima sobre asfalto.
    Tipografía: Barlow (cuerpo) y Barlow Condensed (títulos, precios, códigos),
    una familia pensada a partir de la señalización vial. */
 :root{
@@ -9,8 +9,8 @@
   --line:#39424E;
   --text:#F2F4F6;
   --muted:#9AA4B0;
-  --accent:#FFC629;    /* amarillo placa */
-  --accent-d:#EBAE0C;
+  --accent:#99F903;    /* verde lima del logo */
+  --accent-d:#84D900;
   --ink:#14181D;       /* texto sobre amarillo */
   --paper:#FFFFFF;     /* fondo de las fotos de producto */
   --ok:#4CC38A;
@@ -30,7 +30,7 @@ a{color:var(--accent);}
 button{cursor:pointer;font-weight:700;letter-spacing:.02em;border:none;border-radius:8px;font-size:17px;}
 input,select{font-family:inherit;font-size:16px;background:var(--panel2);border:1px solid var(--line);color:var(--text);border-radius:8px;padding:10px 12px;}
 input::placeholder{color:#7D8794;}
-input:focus,select:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px rgba(255,198,41,.18);}
+input:focus,select:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px rgba(153,249,3,.18);}
 
 .btn{background:var(--accent);color:var(--ink);padding:11px 18px;transition:background .15s;}
 .btn:hover{background:var(--accent-d);}
@@ -43,7 +43,7 @@ input:focus,select:focus{outline:none;border-color:var(--accent);box-shadow:0 0 
 header{position:sticky;top:0;z-index:5;background:rgba(27,32,38,.96);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border-bottom:1px solid var(--line);padding-top:env(safe-area-inset-top,0px);}
 .bar{max-width:1200px;margin:0 auto;display:flex;align-items:center;gap:16px;padding:10px 20px;}
 .logo{display:block;flex:none;line-height:0;}
-.logo img{width:92px;height:46px;display:block;}
+.logo img{height:52px;width:auto;display:block;}
 .search{flex:1;position:relative;min-width:0;}
 .search svg{position:absolute;left:12px;top:50%;transform:translateY(-50%);width:18px;height:18px;color:var(--muted);pointer-events:none;}
 .search input{width:100%;padding-left:38px;height:44px;}
@@ -89,7 +89,7 @@ main{max-width:1200px;margin:0 auto;padding:22px 20px 60px;}
 .noimg{display:flex;flex-direction:column;align-items:center;gap:6px;color:#9AA3AD;}
 .noimg svg{width:40px;height:40px;opacity:.55;}
 .card-body{padding:12px 14px 14px;display:flex;flex-direction:column;gap:4px;flex:1;}
-.code{align-self:flex-start;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:13px;letter-spacing:.06em;color:var(--accent);border:1px solid rgba(255,198,41,.45);border-radius:4px;padding:1px 6px;font-variant-numeric:tabular-nums;}
+.code{align-self:flex-start;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:13px;letter-spacing:.06em;color:var(--accent);border:1px solid rgba(153,249,3,.45);border-radius:4px;padding:1px 6px;font-variant-numeric:tabular-nums;}
 .pname{font-size:16px;font-weight:600;line-height:1.3;margin:2px 0 0;font-family:'Barlow',sans-serif;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;min-height:2.6em;cursor:pointer;}
 .cat-tag{font-size:13px;color:var(--muted);}
 .price-row{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;margin-top:auto;padding-top:6px;}
@@ -129,7 +129,7 @@ th{color:var(--muted);font-weight:600;font-size:13px;}
 .empty{color:var(--muted);text-align:center;padding:48px 0;grid-column:1/-1;}
 footer{border-top:1px solid var(--line);color:var(--muted);font-size:14px;}
 footer .in{max-width:1200px;margin:0 auto;padding:22px 20px 30px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;}
-footer img{width:64px;height:32px;}
+footer img{height:32px;width:auto;}
 
 #toast{
   position:fixed;left:50%;bottom:calc(24px + env(safe-area-inset-bottom,0px));transform:translateX(-50%) translateY(20px);
@@ -182,7 +182,7 @@ footer img{width:64px;height:32px;}
 /* ───────────────────────── Móvil ───────────────────────── */
 @media (max-width: 640px){
   .bar{flex-wrap:wrap;gap:10px;padding:10px 14px;}
-  .logo img{width:80px;height:40px;}
+  .logo img{height:44px;}
   .right{margin-left:auto;}
   .search{order:3;flex:1 1 100%;}
   .iconbtn{padding:0 12px;}
