@@ -66,7 +66,6 @@ header{position:sticky;top:0;z-index:5;background:rgba(27,32,38,.96);backdrop-fi
 main{max-width:1200px;margin:0 auto;padding:22px 20px 60px;}
 
 .intro{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);gap:28px;align-items:center;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:28px 30px;margin-bottom:28px;position:relative;overflow:hidden;}
-.intro::after{content:'';position:absolute;left:0;top:0;bottom:0;width:6px;background:var(--accent);}
 .intro h1{font-size:44px;font-weight:800;margin:0 0 10px;}
 .intro p{color:var(--muted);margin:0;font-size:17px;max-width:46ch;}
 .steps{list-style:none;margin:0;padding:0;display:grid;gap:10px;counter-reset:paso;}
@@ -189,7 +188,7 @@ footer img{height:32px;width:auto;}
   .acct-label{max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
   .chips{padding:0 14px 10px;}
   main{padding:16px 14px 48px;}
-  .intro{padding:20px 20px 20px 24px;margin-bottom:22px;}
+  .intro{padding:20px;margin-bottom:22px;}
   .intro h1{font-size:32px;}
   .intro h1{margin-bottom:14px;}
   .intro p{display:none;}
