@@ -14,12 +14,25 @@
 <meta property="og:image" content="https://motorepuestos-shop.onrender.com/og-image.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700;800&family=Barlow:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700;800&family=Barlow:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <link rel="stylesheet" href="styles.css">
 </head>
 <body>
+<!-- Pantalla de carga: se ve mientras llega el catálogo; app.js la quita al terminar -->
+<div id="splash" role="status" aria-live="polite">
+  <div class="sp-center">
+    <img class="sp-logo" src="logo-jk2m.png" alt="JK2M Repuestos" width="300" height="128">
+    <div class="sp-bar" aria-hidden="true"><span></span></div>
+    <p class="sp-msg">Cargando catálogo…</p>
+  </div>
+  <div class="sp-by">
+    <span>Desarrollado por</span>
+    <span class="sg"><img src="softgest-icon.svg" alt="" width="28" height="28"><b>soft<i>gest</i></b></span>
+  </div>
+</div>
+<script>/* Seguro: si algo falla al cargar, la pantalla de carga no se queda para siempre */setTimeout(function(){var s=document.getElementById('splash');if(s)s.classList.add('hide');},15000);</script>
 <header>
   <div class="bar">
     <a class="logo" href="./" aria-label="JK2M Repuestos, inicio"><img src="logo-jk2m.png" alt="JK2M Repuestos" width="122" height="52"></a>

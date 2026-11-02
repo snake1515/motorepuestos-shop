@@ -793,13 +793,28 @@ async function shareReceipt(){
 }
 
 // ───────────────────────────── Arranque ────────────────────────────────
+// Pantalla de carga: se muestra al menos 1,2 s (para que no parpadee) y se quita
+// apenas el catálogo está listo, o aunque algo falle.
+const SPLASH_MIN_MS = 1200;
+function hideSplash(){
+  const el = document.getElementById('splash');
+  if(!el) return;
+  setTimeout(()=>{
+    el.classList.add('hide');
+    setTimeout(()=> el.remove(), 450);
+  }, Math.max(0, SPLASH_MIN_MS - performance.now()));
+}
 async function init(){
-  document.getElementById('authSubmit').dataset.mode = 'login';
-  await loadProfile();
-  await loadCatalog();
-  document.getElementById('loadingMsg').style.display = 'none';
-  render();
-  sb.auth.onAuthStateChange(async ()=>{ await loadProfile(); render(); });
+  try{
+    document.getElementById('authSubmit').dataset.mode = 'login';
+    await loadProfile();
+    await loadCatalog();
+    document.getElementById('loadingMsg').style.display = 'none';
+    render();
+    sb.auth.onAuthStateChange(async ()=>{ await loadProfile(); render(); });
+  } finally {
+    hideSplash();
+  }
 }
 init();
 
