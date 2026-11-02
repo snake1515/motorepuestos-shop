@@ -12,7 +12,6 @@
 <body>
 <header>
   <div class="brand">MOTO<span>REPUESTOS</span></div>
-  <img src="img/logo-j2km.svg" alt="Logo J2KM" class="logo">
   <select id="catSelect" onchange="setCat(this.value)" style="min-width:160px"></select>
   <input id="searchBox" placeholder="Buscar por nombre, código o categoría..." oninput="onSearch(this.value)" style="flex:1;min-width:160px">
   <select id="sortSelect" onchange="onSortChange(this.value)" style="min-width:170px">
@@ -28,16 +27,6 @@
 </header>
 <main>
   <div id="adminBar"></div>
-
-<section class="hero">
-  <div class="hero-content">
-    <h1>Encuentra los repuestos para tu moto</h1>
-    <form class="hero-search">
-      <input type="text" placeholder="Busca por nombre, código o categoría...">
-      <button type="submit">Buscar</button>
-    </form>
-  </div>
-</section>
   <h2 id="catTitle" style="margin-bottom:14px;">Catálogo</h2>
   <div id="loadingMsg" class="empty">Cargando catálogo...</div>
   <div class="grid" id="grid"></div>
@@ -121,5 +110,12 @@
 <script src="app.js"></script>
 </body>
 </html>
+
+
+
+
+
+
+
 
 
