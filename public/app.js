@@ -40,12 +40,15 @@ function closeModal(id){ document.getElementById(id).classList.remove('show'); }
 
 // ───────────────────────────── Carga de datos ─────────────────────────
 async function loadCatalog(){
-  const [{data:prods, error:e1}, {data:cats, error:e2}] = await Promise.all([
+  let res;
+  try{ res = await Promise.all([
     sb.from('products').select('*').order('name'),
     sb.from('categories').select('name').order('name'),
-  ]);
+  ]); }catch(err){ res = [{ data:null, error:err }, { data:null, error:null }]; }
+  const [{data:prods, error:e1}, {data:cats, error:e2}] = res;
   if(e1) console.error(e1);
   if(e2) console.error(e2);
+  state.loadError = e1 ? (e1.message || String(e1)) : null;
   state.products = prods || [];
   state.categories = (cats||[]).map(c=>c.name);
 }
@@ -103,7 +106,7 @@ function renderGrid(){
         <button class="btn btn-sm" ${out?'disabled':''} onclick="openQty(${p.id})">${out?'Agotado':'Agregar'}</button>
         ${admin ? `<button class="btn-outline btn-sm" style="margin-top:6px" onclick="deleteProduct(${p.id})">Eliminar</button>` : ''}
       </div></article>`;
-  }).join('') : `<div class="empty">No encontramos productos${state.search ? ' para “' + esc(state.search) + '”' : ''}. Prueba con otra palabra o con el código.</div>`;
+  }).join('') : state.loadError ? `<div class="empty">No se pudo cargar el catálogo. Revisa tu conexión y recarga la página.<br><small style="opacity:.7">Detalle: ${esc(state.loadError)}</small></div>` : `<div class="empty">No encontramos productos${state.search ? ' para “' + esc(state.search) + '”' : ''}. Prueba con otra palabra o con el código.</div>`;
 }
 const NO_IMG = '<span class="noimg"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" aria-hidden="true"><path d="M4 8h3l1.5-2h7L17 8h3v11H4z"/><circle cx="12" cy="13.5" r="3.5"/></svg>Sin foto</span>';
 
