@@ -365,7 +365,7 @@ function adminProductsHtml(){
       <button class="btn btn-sm" id="migBtn" onclick="migratePhotos()">${state.migrating ? 'Moviendo…' : 'Mover fotos a Storage'}</button><div id="migMsg" class="img-info">${state.migMsg||''}</div></div>` : ''}
     <div class="row" style="margin-bottom:12px;flex-wrap:wrap">
       <button class="btn btn-sm" onclick="openProdModal(null)">+ Nuevo producto</button>
-      <button class="btn-outline btn-sm" onclick="document.getElementById('xlsxImport').click()">Importar lista de precios (Excel)</button>
+      <button class="btn-outline btn-sm" onclick="document.getElementById('xlsxImport').click()" title="Columnas: Producto, Código, Precio y (opcional) Existencias">Importar productos y precios (Excel)</button>
       <input type="file" id="xlsxImport" accept=".xlsx,.xls" style="display:none" onchange="importPriceList(this.files[0])">
       <select onchange="state.adminFilter=this.value;renderAdminPanel()" aria-label="Filtrar">${opt('todos','Todos')}${opt('sinfoto','Sin foto')}${opt('destacados','Destacados')}${opt('agotados','Agotados')}</select>
       <input id="adminSearchBox" placeholder="Buscar producto o código..." value="${esc(state.adminSearch)}" oninput="state.adminSearch=this.value;renderAdminTable()" style="flex:1;min-width:180px">
@@ -836,6 +836,14 @@ async function migratePhotos(){
 }
 
 // ───────────────────────────── Importar Excel ──────────────────────────
+// Número desde una celda: si ya es número se usa tal cual; si es texto se limpia
+// el formato colombiano ("$3.500", "1.200,50").
+function numCell(v){
+  if(typeof v === 'number') return v;
+  const t = String(v == null ? '' : v).replace(/[$\s]/g, '');
+  if(!t) return NaN;
+  return parseFloat(t.replace(/\.(?=\d{3}(\D|$))/g, '').replace(',', '.'));
+}
 function importPriceList(file){
   if(!file) return;
   const msg = document.getElementById('importMsg');
@@ -850,16 +858,21 @@ function importPriceList(file){
       let curCatName = null;
       const newCats = new Set();
       const toUpsert = [];
-      let skipped = 0;
+      let skipped = 0, badStock = 0;
       for(let i=1;i<rows.length;i++){
         const r = rows[i]; if(!r || r.length===0) continue;
         const name = (r[0]||'').toString().trim();
         const code = (r[1]||'').toString().trim();
-        const price = parseFloat(r[2]);
+        const price = numCell(r[2]);
+        // Columna D (opcional): existencias. Vacía = no se toca el stock.
+        const stock = (r[3] == null || String(r[3]).trim() === '') ? null : Math.round(numCell(r[3]));
         if(!name) continue;
         if(!code){ curCatName = toTitle(name); newCats.add(curCatName); continue; }
         if(isNaN(price)){ skipped++; continue; }
-        toUpsert.push({ name: toTitle(name), code, category: curCatName || 'Sin categoría', price, stock: 15 });
+        if(stock !== null && (isNaN(stock) || stock < 0)){ badStock++; }
+        const row = { name: toTitle(name), code, category: curCatName || 'Sin categoría', price };
+        if(stock !== null && !isNaN(stock) && stock >= 0) row.stock = stock;
+        toUpsert.push(row);
       }
       msg.innerHTML = `<div class="msg" style="background:var(--panel2);color:var(--muted)">Importando ${toUpsert.length} productos...</div>`;
       const existing = new Set(state.categories);
@@ -867,17 +880,25 @@ function importPriceList(file){
       if(catsToAdd.length) await sb.from('categories').insert(catsToAdd);
       const BATCH = 200;
       const existingCodes = new Set(state.adminProducts.map(p => p.code).filter(Boolean));
-      // Productos que ya existen: se actualizan nombre, categoría y precio, pero NO el
-      // stock (así no se pierde el inventario ajustado a mano). Los nuevos entran con stock 15.
-      const existingRows = toUpsert.filter(b => existingCodes.has(b.code)).map(({ stock, ...rest }) => rest);
-      const newRows = toUpsert.filter(b => !existingCodes.has(b.code));
-      for(const batchRows of [existingRows, newRows]){
+      // Productos que ya existen: se actualizan nombre, categoría y precio; el stock solo
+      // si la fila trae existencias. Los nuevos entran con sus existencias, o 15 si no traen.
+      // (Se suben en grupos con las mismas columnas para no dejar el stock vacío.)
+      const existingRows = toUpsert.filter(b => existingCodes.has(b.code));
+      const exWithStock = existingRows.filter(b => b.stock != null);
+      const exNoStock = existingRows.filter(b => b.stock == null);
+      const newRows = toUpsert.filter(b => !existingCodes.has(b.code)).map(b => ({ ...b, stock: b.stock != null ? b.stock : 15 }));
+      for(const batchRows of [exWithStock, exNoStock, newRows]){
         for(let i=0;i<batchRows.length;i+=BATCH){
           const { error } = await sb.from('products').upsert(batchRows.slice(i,i+BATCH), { onConflict:'code' });
           if(error){ throw error; }
         }
       }
-      state.importMsg = `<div class="msg ok">Importación completa: ${existingRows.length} actualizados (stock sin cambios), ${newRows.length} nuevos, ${skipped} filas sin precio omitidas.</div>`;
+      const partes = [`${existingRows.length} actualizados`, `${newRows.length} nuevos`];
+      if(exWithStock.length || newRows.some(b => b.stock !== 15)) partes.push(`${exWithStock.length + newRows.filter(b => toUpsert.find(x => x.code === b.code).stock != null).length} con existencias del archivo`);
+      if(exNoStock.length) partes.push(`${exNoStock.length} sin existencias en el archivo (stock sin cambios)`);
+      if(skipped) partes.push(`${skipped} filas sin precio omitidas`);
+      if(badStock) partes.push(`${badStock} con existencias no válidas (se ignoró ese valor)`);
+      state.importMsg = `<div class="msg ok">Importación completa: ${partes.join(', ')}.</div>`;
       await refreshAfterProductChange();
     }catch(err){
       state.importMsg = `<div class="msg err">No se pudo completar la importación: ${esc(friendlyError(err))}</div>`;

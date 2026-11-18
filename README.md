@@ -16,8 +16,9 @@ entregado, cancelado); confirmar descuenta el stock y cancelar lo devuelve; los
 pendientes apartan las unidades durante las horas que se configuren. Exportar
 pedidos a Excel, configuración de la tienda (nombre, WhatsApp, medios de pago,
 domicilio/envío, abrir o cerrar la tienda), destacados, filtro de productos
-sin foto, mover las fotos a Storage, importar la lista de precios en Excel sin
-tocar el stock de los productos que ya existen.
+sin foto, mover las fotos a Storage, y carga masiva en Excel con las columnas
+Producto, Código, Precio y Existencias (opcional: si viene vacía no se toca el
+stock de los productos que ya existen; los nuevos entran con 15).
 
 **Base de datos:** el servidor valida el stock, calcula los precios con el
 descuento del cliente, limita pedidos seguidos y rechaza robots. Una tarea de
