@@ -1,0 +1,16 @@
+{
+  "name": "JK2M Repuestos",
+  "short_name": "JK2M",
+  "description": "Repuestos y lubricantes para moto. Arma tu pedido y te confirmamos por WhatsApp.",
+  "lang": "es-CO",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#1B2026",
+  "theme_color": "#1B2026",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

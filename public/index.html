@@ -8,6 +8,7 @@
 <meta name="theme-color" content="#1B2026">
 <link rel="icon" href="favicon.png" type="image/png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="manifest" href="manifest.webmanifest">
 <meta property="og:type" content="website">
 <meta property="og:title" content="JK2M Repuestos · Tienda en línea">
 <meta property="og:description" content="Repuestos y lubricantes para moto. Arma tu pedido y te confirmamos por WhatsApp.">
@@ -17,7 +18,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700;800&family=Barlow:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<link rel="stylesheet" href="styles.css?v=20261102c">
+<link rel="stylesheet" href="styles.css?v=20261118a">
 </head>
 <body>
 <!-- Pantalla de carga: se ve mientras llega el catálogo; app.js la quita al terminar -->
@@ -54,11 +55,12 @@
 
 <main>
   <div id="adminBar"></div>
+  <div class="closed" id="closedBanner" style="display:none"></div>
 
   <section class="intro" id="intro">
     <div>
       <h1>Repuestos para tu moto</h1>
-      <p>Busca por nombre o por código, arma tu pedido y te confirmamos disponibilidad y pago por WhatsApp.</p>
+      <p id="introMsg">Busca por nombre o por código, arma tu pedido y te confirmamos disponibilidad y pago por WhatsApp.</p>
     </div>
     <ol class="steps">
       <li>Encuentra el repuesto</li>
@@ -80,12 +82,14 @@
   </div>
   <div id="loadingMsg" class="empty">Cargando catálogo…</div>
   <div class="grid" id="grid"></div>
+  <div class="more" id="moreWrap"></div>
   <div id="adminPanel" style="display:none"></div>
 </main>
 
 <footer><div class="in">
   <img src="logo-jk2m.png" alt="" width="75" height="32">
   <span>JK2M Repuestos · Los pedidos se confirman y se pagan por WhatsApp.</span>
+  <button class="linkbtn" onclick="openMyOrders()">Mis pedidos</button>
 </div></footer>
 
 <div class="modal-bg" id="authModal"><div class="modal">
@@ -100,6 +104,7 @@
 <div class="modal-bg" id="cartModal"><div class="modal">
   <button class="close-x" onclick="closeModal('cartModal')" aria-label="Cerrar">✕</button>
   <h2>Tu carrito</h2>
+  <div id="cartNotice"></div>
   <div id="cartItems"></div>
   <div class="total-row"><b>Total</b><b id="cartTotal"></b></div>
   <button class="btn" style="width:100%" onclick="openCheckout()">Finalizar compra</button>
@@ -113,6 +118,19 @@
   <div class="field"><label for="coName">Nombre</label><input id="coName" type="text" autocomplete="name"></div>
   <div class="field"><label for="coNit">NIT o CC</label><input id="coNit" type="text" inputmode="numeric" autocomplete="off" placeholder="Ej: 1002345678 o 900123456-7"></div>
   <div class="field"><label for="coEmail">Correo (opcional)</label><input id="coEmail" type="email" autocomplete="email"></div>
+  <fieldset class="field opts" id="coEntregaBox">
+    <legend>¿Cómo recibes tu pedido?</legend>
+    <label class="opt"><input type="radio" name="coEntrega" value="recoger" checked onchange="onEntregaChange()"><span>Recojo en el local</span></label>
+    <label class="opt" id="optDomicilio"><input type="radio" name="coEntrega" value="domicilio" onchange="onEntregaChange()"><span>Domicilio</span></label>
+    <label class="opt" id="optEnvio"><input type="radio" name="coEntrega" value="envio" onchange="onEntregaChange()"><span>Envío nacional</span></label>
+  </fieldset>
+  <div id="coDirBox" style="display:none">
+    <div class="field"><label for="coDir">Dirección de entrega</label><input id="coDir" type="text" autocomplete="street-address" placeholder="Calle, número, barrio"></div>
+    <div class="field" id="coCiudadBox"><label for="coCiudad">Ciudad</label><input id="coCiudad" type="text" autocomplete="address-level2"></div>
+  </div>
+  <div class="field" id="coMedioBox" style="display:none"><label for="coMedio">¿Cómo vas a pagar? (opcional)</label><select id="coMedio"></select></div>
+  <div class="field"><label for="coNota">Nota para la tienda (opcional)</label><textarea id="coNota" rows="2" maxlength="400" placeholder="Ej: modelo y año de tu moto"></textarea></div>
+  <div class="hp" aria-hidden="true"><label>Sitio web<input id="coWeb" type="text" tabindex="-1" autocomplete="off"></label></div>
   <div id="coMsg"></div>
   <button class="btn" style="width:100%" onclick="confirmOrder()" id="coSubmitBtn">Enviar pedido</button>
 </div></div>
@@ -120,11 +138,14 @@
 <div class="modal-bg" id="receiptModal"><div class="modal">
   <button class="close-x" onclick="closeModal('receiptModal')" aria-label="Cerrar">✕</button>
   <h2>¡Pedido recibido!</h2>
-  <p class="note">Guarda o comparte este comprobante; te escribimos pronto con los datos de pago.</p>
+  <p class="note" id="rcNote">Te escribimos pronto por WhatsApp con los datos de pago.</p>
+  <a class="btn btn-wa" id="rcWa" target="_blank" rel="noopener" style="display:none">Enviar mi pedido por WhatsApp</a>
+  <div id="rcPay"></div>
   <canvas id="receiptCanvas" style="width:100%;height:auto;border-radius:10px;margin-bottom:14px;border:1px solid var(--line)"></canvas>
   <div class="row" style="flex-wrap:wrap">
     <button class="btn" onclick="downloadReceipt()">Descargar imagen</button>
-    <button class="btn-outline" onclick="shareReceipt()">Compartir por WhatsApp</button>
+    <button class="btn-outline" onclick="shareReceipt()">Compartir imagen</button>
+    <button class="btn-outline" onclick="openOrderStatus(lastReceipt && lastReceipt.token)">Ver estado del pedido</button>
   </div>
 </div></div>
 
@@ -144,6 +165,23 @@
   </div>
   <div class="qty-sub"><span>Subtotal</span><b id="qtySub" style="color:var(--accent)"></b></div>
   <button class="btn" style="width:100%" id="qtyAddBtn" onclick="confirmAdd()">Agregar al carrito</button>
+  <div class="row sheet-actions">
+    <a class="btn-outline btn-sm" id="qtyAsk" target="_blank" rel="noopener" style="display:none">Preguntar por WhatsApp</a>
+    <button class="btn-outline btn-sm" onclick="shareProduct()">Compartir</button>
+  </div>
+  <div id="qtyRelated"></div>
+</div></div>
+
+<div class="modal-bg" id="orderModal"><div class="modal">
+  <button class="close-x" onclick="closeModal('orderModal')" aria-label="Cerrar">✕</button>
+  <div id="orderBody"></div>
+</div></div>
+
+<div class="modal-bg" id="myOrdersModal"><div class="modal">
+  <button class="close-x" onclick="closeModal('myOrdersModal')" aria-label="Cerrar">✕</button>
+  <h2>Mis pedidos</h2>
+  <p class="note">Pedidos hechos desde este celular o computador.</p>
+  <div id="myOrdersList"></div>
 </div></div>
 
 <div class="modal-bg" id="prodModal"><div class="modal">
@@ -154,13 +192,14 @@
   <div class="field"><label>Categoría</label><select id="pCat"></select></div>
   <div class="field"><label>Precio base (COP)</label><input id="pPrice" type="number"></div>
   <div class="field"><label>Stock</label><input id="pStock" type="number" value="10"></div>
+  <label class="check"><input type="checkbox" id="pFeatured"> Destacado (sale primero en la tienda)</label>
   <div class="field"><label>Imagen (se reduce automáticamente)</label><input id="pImg" type="file" accept="image/*"></div>
   <div class="img-box" id="pImgBox"><div class="img-thumb"><img id="pImgPreview" alt=""></div><div class="img-info" id="pImgInfo"></div></div>
   <div id="pMsg"></div>
   <button class="btn" style="width:100%" onclick="saveProduct()" id="pSaveBtn">Guardar producto</button>
 </div></div>
 
-<script src="config.js?v=20261102c"></script>
-<script src="app.js?v=20261102c"></script>
+<script src="config.js?v=20261118a"></script>
+<script src="app.js?v=20261118a"></script>
 </body>
 </html>
