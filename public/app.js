@@ -367,6 +367,7 @@ function adminProductsHtml(){
       <button class="btn btn-sm" onclick="openProdModal(null)">+ Nuevo producto</button>
       <button class="btn-outline btn-sm" onclick="document.getElementById('xlsxImport').click()" title="Columnas: Producto, Código, Precio y (opcional) Existencias">Importar productos y precios (Excel)</button>
       <input type="file" id="xlsxImport" accept=".xlsx,.xls" style="display:none" onchange="importPriceList(this.files[0])">
+      <button class="btn-outline btn-sm" onclick="exportCatalog()" title="Todos los productos con código, precio y existencias, listo para editar y volver a importar">Descargar catálogo (Excel)</button>
       <select onchange="state.adminFilter=this.value;renderAdminPanel()" aria-label="Filtrar">${opt('todos','Todos')}${opt('sinfoto','Sin foto')}${opt('destacados','Destacados')}${opt('agotados','Agotados')}</select>
       <input id="adminSearchBox" placeholder="Buscar producto o código..." value="${esc(state.adminSearch)}" oninput="state.adminSearch=this.value;renderAdminTable()" style="flex:1;min-width:180px">
     </div>
@@ -906,6 +907,44 @@ function importPriceList(file){
     }
   };
   reader.readAsArrayBuffer(file);
+}
+
+// Catálogo completo en el mismo formato de la importación: se edita en Excel y se
+// vuelve a subir. Los productos sin código van en otra hoja (no se pueden reimportar).
+function exportCatalog(){
+  if(!state.adminLoaded){ showToast('Espera a que carguen los productos'); return; }
+  const ps = state.adminProducts.slice().sort((a, b) => a.category.localeCompare(b.category, 'es') || a.name.localeCompare(b.name, 'es'));
+  const rows = [['Producto', 'Código', 'Precio', 'Existencias']];
+  const sinCodigo = [['Producto', 'Categoría', 'Precio', 'Existencias']];
+  let cur = null;
+  for(const p of ps){
+    if(!p.code){ sinCodigo.push([p.name, p.category, Number(p.price), p.stock]); continue; }
+    if(p.category !== cur){ rows.push([p.category, null, null, null]); cur = p.category; }
+    rows.push([p.name, p.code, Number(p.price), p.stock]);
+  }
+  const wb = XLSX.utils.book_new();
+  const ws = XLSX.utils.aoa_to_sheet(rows);
+  ws['!cols'] = [{ wch: 52 }, { wch: 14 }, { wch: 12 }, { wch: 13 }];
+  XLSX.utils.book_append_sheet(wb, ws, 'Catálogo');
+  if(sinCodigo.length > 1){
+    const w2 = XLSX.utils.aoa_to_sheet(sinCodigo);
+    w2['!cols'] = [{ wch: 52 }, { wch: 24 }, { wch: 12 }, { wch: 13 }];
+    XLSX.utils.book_append_sheet(wb, w2, 'Sin código');
+  }
+  const ins = [
+    ['Cómo usar este archivo (la tienda solo lee la primera hoja, "Catálogo"):'], [''],
+    ['Columna A · Producto: nombre. Una fila SIN código es el nombre de una categoría; los productos de abajo quedan en ella.'],
+    ['Columna B · Código: identifica el producto. Si el código ya existe, se actualiza; si no, se crea un producto nuevo.'],
+    ['Columna C · Precio: precio base en pesos, sin descuentos de cliente.'],
+    ['Columna D · Existencias: si trae un número, ese queda como stock. Si la dejas vacía, el stock no se toca (los nuevos entran con 15).'],
+    [''], ['Para cambiar solo precios, borra la columna D o déjala vacía.'],
+    ['Los productos de la hoja "Sin código" no se pueden actualizar con este archivo: ponles código desde el panel (Editar).'],
+    ['Se sube en el panel: Productos → Importar productos y precios (Excel).'],
+  ];
+  const w3 = XLSX.utils.aoa_to_sheet(ins); w3['!cols'] = [{ wch: 120 }];
+  XLSX.utils.book_append_sheet(wb, w3, 'Instrucciones');
+  XLSX.writeFile(wb, `catalogo-jk2m-${new Date().toISOString().slice(0, 10)}.xlsx`);
+  showToast(`Catálogo descargado: ${ps.length - (sinCodigo.length - 1)} productos`);
 }
 
 // ───────────────────────────── Avisos (toast) ───────────────────────────
