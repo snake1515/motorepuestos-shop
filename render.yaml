@@ -5,6 +5,10 @@ services:
     buildCommand: "echo 'sitio estático, sin build'"
     staticPublishPath: ./public
     pullRequestPreviewsEnabled: false
+    headers:
+      - path: /fotos/*
+        name: Cache-Control
+        value: public, max-age=2592000
     routes:
       - type: rewrite
         source: /*

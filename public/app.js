@@ -1234,7 +1234,7 @@ function showToast(msg){
 // ───────────────────────────── Carrito ─────────────────────────────────
 function cartLine(p, qty){
   return { id: p.id, qty, name: p.name, code: p.code, price: Number(p.price), disp: p.disponible,
-           img: /^https?:/.test(p.image_url || '') ? p.image_url : '' };
+           img: /^(https?:|\/fotos\/)/.test(p.image_url || '') ? p.image_url : '' };
 }
 function addToCart(id, qty){
   if(!storeOpen()){ showToast('La tienda está cerrada en este momento'); return; }
