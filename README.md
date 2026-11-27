@@ -16,9 +16,12 @@ entregado, cancelado); confirmar descuenta el stock y cancelar lo devuelve; los
 pendientes apartan las unidades durante las horas que se configuren. Exportar
 pedidos a Excel, configuración de la tienda (nombre, WhatsApp, medios de pago,
 domicilio/envío, abrir o cerrar la tienda), destacados, filtro de productos
-sin foto, mover las fotos a Storage, y carga masiva en Excel con las columnas
-Producto, Código, Precio y Existencias (opcional: si viene vacía no se toca el
-stock de los productos que ya existen; los nuevos entran con 15).
+sin foto, mover las fotos a Storage, y **carga masiva** (pestaña "Carga masiva",
+igual que en Moto Speed): una fila por producto con Código, Nombre, Categoría,
+Marca, Compatible con, Descripción, Precio, Existencias, Destacado y En tienda.
+Cada fila se acepta o se rechaza con su motivo (con Excel de rechazadas), lo que
+va vacío no se toca, se aceptan .csv, el Excel de Stocka y el formato anterior, y
+las fotos se suben en bloque con un ZIP (cada foto con el código del producto).
 
 **Base de datos:** el servidor valida el stock, calcula los precios con el
 descuento del cliente, limita pedidos seguidos y rechaza robots. Una tarea de
@@ -28,7 +31,8 @@ para que el plan gratuito no pause el proyecto.
 ## Actualizar una tienda que ya está funcionando
 
 En Supabase, **SQL Editor → New query**, pega `supabase/migracion_tienda_v2.sql`
-y dale **Run** (se puede correr más de una vez). Luego publica el sitio en
+y dale **Run** (se puede correr más de una vez); después haz lo mismo con
+`supabase/migracion_productos_v3.sql`. Luego publica el sitio en
 Render. Después, en el panel: **Configuración** (pon el WhatsApp y los medios
 de pago) y en **Productos** el botón **Mover fotos a Storage**.
 
@@ -50,7 +54,8 @@ precios de octubre, y ~390 con foto ya emparejada desde el catálogo en PDF.
 3. Ve a **SQL Editor → New query**, pega el contenido de `supabase/schema.sql`
    y ejecútalo. Crea las tablas, la seguridad (RLS) y el bucket de imágenes.
    Luego corre, en este orden, `supabase/migracion_pedidos.sql`,
-   `supabase/migracion_seguridad_perfiles.sql` y `supabase/migracion_tienda_v2.sql`.
+   `supabase/migracion_seguridad_perfiles.sql`, `supabase/migracion_tienda_v2.sql` y
+   `supabase/migracion_productos_v3.sql`.
 4. En una nueva consulta, pega y ejecuta `supabase/seed.sql`. Esto carga los
    ~900 productos reales con sus precios y fotos. El archivo pesa ~1.5 MB:
    si el editor web se siente lento, también puedes correrlo con:

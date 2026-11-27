@@ -1,7 +1,7 @@
 -- MotoRepuestos — esquema de base de datos para Supabase
 -- Ejecuta este archivo completo en Supabase: Dashboard > SQL Editor > New query > pega y corre.
 -- Orden para una instalación nueva: schema.sql, migracion_pedidos.sql,
--- migracion_seguridad_perfiles.sql, migracion_tienda_v2.sql y, si quieres el
+-- migracion_seguridad_perfiles.sql, migracion_tienda_v2.sql, migracion_productos_v3.sql y, si quieres el
 -- catálogo, seed.sql (después de seed.sql vuelve a correr migracion_tienda_v2.sql
 -- para indexar la búsqueda y limpiar las fotos en blanco).
 

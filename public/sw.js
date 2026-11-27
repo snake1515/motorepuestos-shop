@@ -1,7 +1,7 @@
 // JK2M Repuestos — service worker: permite instalar la tienda y muestra una
 // página propia si no hay conexión. Siempre pide primero a la red (así nunca
 // se queda con una versión vieja); la copia guardada solo se usa sin internet.
-const CACHE = 'jk2m-v20261118a';
+const CACHE = 'jk2m-v20261127a';
 const BASICOS = ['offline.html', 'logo-jk2m.png', 'icon-192.png', 'favicon.png'];
 
 self.addEventListener('install', e => {

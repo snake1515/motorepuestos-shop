@@ -186,7 +186,7 @@ function cardHtml(p){
     <div class="card-body">
       ${p.code ? `<span class="code">${esc(p.code)}</span>` : ''}
       <h3 class="pname" onclick="openProduct(${p.id})">${esc(p.name)}</h3>
-      <div class="cat-tag">${esc(p.category)}</div>
+      <div class="cat-tag">${esc(p.category)}${p.marca ? ' · ' + esc(p.marca) : ''}</div>
       <div class="price-row"><span class="price">${fmt(fp)}</span>${showBase ? `<span class="price-base">${fmt(p.price)}</span>` : ''}</div>
       <div class="stock ${out?'out':''}">${out ? 'Agotado' : p.disponible + (p.disponible===1 ? ' disponible' : ' disponibles')}</div>
       <button class="btn btn-sm" ${out || !storeOpen() ? 'disabled' : ''} onclick="openProduct(${p.id})">${out ? 'Agotado' : 'Agregar'}</button>
@@ -310,8 +310,11 @@ function adminProduct(id){ return state.adminProducts.find(p => p.id === id) || 
 async function loadAdminProducts(){
   const all = [];
   for(let from = 0; ; from += 1000){
-    const { data, error } = await sb.from('products').select('id,name,code,category,price,stock,featured,image_url')
-      .order('name').order('id').range(from, from + 999);
+    const cols = state.needsV3 ? 'id,name,code,category,price,stock,featured,image_url'
+      : 'id,name,code,category,price,stock,featured,image_url,marca,compatibilidad,descripcion,en_tienda';
+    const { data, error } = await sb.from('products').select(cols).order('name').order('id').range(from, from + 999);
+    // Si aún no se corrió migracion_productos_v3.sql, se cargan las columnas de antes
+    if(error && !state.needsV3 && /column|marca|en_tienda|does not exist/i.test(error.message || '')){ state.needsV3 = true; from -= 1000; all.length = 0; continue; }
     if(error){ state.adminError = friendlyError(error); break; }
     all.push(...data);
     if(data.length < 1000) break;
@@ -330,6 +333,7 @@ function renderAdminPanel(){
   const tabs = `<div class="tabs">
     <button class="${t==='prod'?'active':''}" onclick="setAdminTab('prod')">Productos (${state.adminProducts.length})</button>
     <button class="${t==='orders'?'active':''}" onclick="setAdminTab('orders')">Pedidos${state.ordersCounts.pendiente ? ` (${state.ordersCounts.pendiente} pendientes)` : ''}</button>
+    <button class="${t==='bulk'?'active':''}" onclick="setAdminTab('bulk')">Carga masiva</button>
     <button class="${t==='cat'?'active':''}" onclick="setAdminTab('cat')">Categorías</button>
     <button class="${t==='config'?'active':''}" onclick="setAdminTab('config')">Configuración</button>
     <button onclick="openUsersAdmin()">Clientes</button></div>`;
@@ -337,6 +341,7 @@ function renderAdminPanel(){
   if(t === 'prod') body = adminProductsHtml();
   else if(t === 'cat') body = adminCategoriesHtml();
   else if(t === 'orders') body = adminOrdersHtml();
+  else if(t === 'bulk') body = adminBulkHtml();
   else body = adminConfigHtml();
   el.innerHTML = tabs + body;
 }
@@ -352,8 +357,9 @@ function adminFiltered(){
   if(f === 'sinfoto') ps = ps.filter(p => !p.image_url);
   else if(f === 'destacados') ps = ps.filter(p => p.featured);
   else if(f === 'agotados') ps = ps.filter(p => p.stock < 1);
+  else if(f === 'ocultos') ps = ps.filter(p => p.en_tienda === false);
   const words = norm(state.adminSearch).split(/\s+/).filter(Boolean);
-  if(words.length) ps = ps.filter(p => { const h = norm(p.name + ' ' + (p.code||'') + ' ' + p.category); return words.every(w => h.includes(w)); });
+  if(words.length) ps = ps.filter(p => { const h = norm(p.name + ' ' + (p.code||'') + ' ' + p.category + ' ' + (p.marca||'') + ' ' + (p.compatibilidad||'')); return words.every(w => h.includes(w)); });
   return ps;
 }
 function adminProductsHtml(){
@@ -365,18 +371,16 @@ function adminProductsHtml(){
       <button class="btn btn-sm" id="migBtn" onclick="migratePhotos()">${state.migrating ? 'Moviendo…' : 'Mover fotos a Storage'}</button><div id="migMsg" class="img-info">${state.migMsg||''}</div></div>` : ''}
     <div class="row" style="margin-bottom:12px;flex-wrap:wrap">
       <button class="btn btn-sm" onclick="openProdModal(null)">+ Nuevo producto</button>
-      <button class="btn-outline btn-sm" onclick="document.getElementById('xlsxImport').click()" title="Columnas: Producto, Código, Precio y (opcional) Existencias">Importar productos y precios (Excel)</button>
-      <input type="file" id="xlsxImport" accept=".xlsx,.xls" style="display:none" onchange="importPriceList(this.files[0])">
-      <button class="btn-outline btn-sm" onclick="exportCatalog()" title="Todos los productos con código, precio y existencias, listo para editar y volver a importar">Descargar catálogo (Excel)</button>
-      <select onchange="state.adminFilter=this.value;renderAdminPanel()" aria-label="Filtrar">${opt('todos','Todos')}${opt('sinfoto','Sin foto')}${opt('destacados','Destacados')}${opt('agotados','Agotados')}</select>
+      <button class="btn-outline btn-sm" onclick="setAdminTab('bulk')">Carga masiva (Excel y fotos)</button>
+      <button class="btn-outline btn-sm" onclick="exportCatalog()">Descargar catálogo (Excel)</button>
+      <select onchange="state.adminFilter=this.value;renderAdminPanel()" aria-label="Filtrar">${opt('todos','Todos')}${opt('sinfoto','Sin foto')}${opt('destacados','Destacados')}${opt('agotados','Agotados')}${opt('ocultos','Ocultos en la tienda')}</select>
       <input id="adminSearchBox" placeholder="Buscar producto o código..." value="${esc(state.adminSearch)}" oninput="state.adminSearch=this.value;renderAdminTable()" style="flex:1;min-width:180px">
     </div>
-    <div id="importMsg">${state.importMsg||''}</div>
     <div id="adminTable">${adminTableHtml(ps)}</div>`;
 }
 function adminTableHtml(ps){
   return `<div style="overflow-x:auto;max-height:65vh;overflow-y:auto"><table><tr><th></th><th>Producto</th><th>Código</th><th>Categoría</th><th>Precio base</th><th>Stock</th><th title="Destacado">★</th><th></th></tr>`
-    + ps.slice(0,300).map(p=>`<tr><td style="width:52px"><div class="thumb" style="width:44px;height:44px">${p.image_url?`<img src="${esc(p.image_url)}" loading="lazy" alt="">`:''}</div></td><td>${esc(p.name)}</td><td style="color:var(--muted);font-size:12px">${esc(p.code||'')}</td><td>${esc(p.category)}</td><td>${fmt(p.price)}</td><td>${p.stock}</td>
+    + ps.slice(0,300).map(p=>`<tr><td style="width:52px"><div class="thumb" style="width:44px;height:44px">${p.image_url?`<img src="${esc(p.image_url)}" loading="lazy" alt="">`:''}</div></td><td>${esc(p.name)}${p.en_tienda === false ? ' <span class="st st-cancelado">Oculto</span>' : ''}${p.marca ? `<div style="color:var(--muted);font-size:12px">${esc(p.marca)}</div>` : ''}</td><td style="color:var(--muted);font-size:12px">${esc(p.code||'')}</td><td>${esc(p.category)}</td><td>${fmt(p.price)}</td><td>${p.stock}</td>
       <td><button class="star ${p.featured?'on':''}" onclick="toggleFeatured(${p.id})" aria-label="Destacado" aria-pressed="${!!p.featured}">★</button></td>
       <td style="white-space:nowrap"><button class="btn btn-sm" onclick="openProdModal(${p.id})">Editar</button> <button class="btn-outline btn-sm" onclick="deleteProduct(${p.id})">Eliminar</button></td></tr>`).join('')
     + `</table></div>`
@@ -604,6 +608,11 @@ function openProdModal(id){
   document.getElementById('pPrice').value = p ? p.price : '';
   document.getElementById('pStock').value = p ? p.stock : 10;
   document.getElementById('pFeatured').checked = !!(p && p.featured);
+  document.getElementById('pMarca').value = p ? (p.marca||'') : '';
+  document.getElementById('pCompat').value = p ? (p.compatibilidad||'') : '';
+  document.getElementById('pDesc').value = p ? (p.descripcion||'') : '';
+  document.getElementById('pTienda').checked = !(p && p.en_tienda === false);
+  document.getElementById('pExtra').style.display = state.needsV3 ? 'none' : '';
   document.getElementById('pImg').value = '';
   document.getElementById('pMsg').innerHTML = '';
   resetImagePreview(p);
@@ -766,12 +775,18 @@ async function saveProduct(){
   const price = parseFloat(document.getElementById('pPrice').value) || 0;
   const stock = parseInt(document.getElementById('pStock').value) || 0;
   const featured = document.getElementById('pFeatured').checked;
+  const extra = state.needsV3 ? {} : {
+    marca: document.getElementById('pMarca').value.trim() || null,
+    compatibilidad: document.getElementById('pCompat').value.trim() || null,
+    descripcion: document.getElementById('pDesc').value.trim() || null,
+    en_tienda: document.getElementById('pTienda').checked,
+  };
   const msg = document.getElementById('pMsg');
   if(!name || !price){ msg.innerHTML = '<div class="msg err">Completa nombre y precio.</div>'; return; }
   const btn = document.getElementById('pSaveBtn'); btn.disabled = true; btn.textContent = 'Guardando...';
   const old = state.editId ? adminProduct(state.editId) : null;
   try{
-    const payload = { name, code, category, price, stock, featured };
+    const payload = { name, code, category, price, stock, featured, ...extra };
     if(state.imgFile) payload.image_url = await uploadToStorage(state.imgFile, state.editId);
     let error;
     if(state.editId) ({ error } = await sb.from('products').update(payload).eq('id', state.editId));
@@ -836,117 +851,375 @@ async function migratePhotos(){
   }
 }
 
-// ───────────────────────────── Importar Excel ──────────────────────────
+
+// ───────────────────────────── Carga masiva (como Moto Speed) ──────────
+// Una fila por producto. Los títulos de columna se reconocen aunque cambien un poco
+// (sin tildes, mayúsculas ni asteriscos) y también se aceptan los archivos que
+// exporta Stocka y Moto Speed. Cada fila se acepta o se rechaza con su motivo; las
+// buenas se guardan aunque otras fallen. El formato anterior (filas de categoría sin
+// código) sigue funcionando.
+
+const BULK_COLS = [
+  ['codigo', 'Código *', 'Código único del producto (ej. JKM210333). Con él se reconoce el producto.'],
+  ['nombre', 'Nombre *', 'Nombre del producto. Obligatorio en productos nuevos.'],
+  ['categoria', 'Categoría', 'Se crea si no existe. Vacía en un producto nuevo = "Sin categoría".'],
+  ['marca', 'Marca', 'Marca del repuesto.'],
+  ['compatibilidad', 'Compatible con', 'Motos donde sirve, separadas por coma. La tienda también busca por aquí.'],
+  ['descripcion', 'Descripción', 'Texto que se ve en la ficha del producto.'],
+  ['precio', 'Precio *', 'Precio base en pesos, sin descuentos de cliente. Obligatorio en productos nuevos.'],
+  ['stock', 'Existencias', 'Si trae un número, ese queda como stock. Vacía = no se toca (los nuevos entran con 15).'],
+  ['destacado', 'Destacado (SI/NO)', 'SI = sale primero en la tienda.'],
+  ['en_tienda', 'En tienda (SI/NO)', 'NO = se oculta de la tienda sin borrarlo.'],
+];
+const BULK_ALIAS = {
+  codigo: ['codigo', 'cod', 'codigo_proveedor', 'codigo_de_proveedor', 'sku', 'procodigo', 'referencia_jk2m'],
+  nombre: ['nombre', 'producto', 'nombre_del_producto', 'repuesto'],
+  categoria: ['categoria', 'grupo', 'linea'],
+  marca: ['marca'],
+  compatibilidad: ['compatibilidad', 'compatible_con', 'aplica_para', 'motos', 'compatibilidad_medida'],
+  descripcion: ['descripcion', 'descripcion_tienda', 'detalle'],
+  precio: ['precio', 'precio_detal', 'precio_venta', 'precio_base', 'precio_base_cop', 'pvp', 'proprecio'],
+  stock: ['existencias', 'stock', 'stock_inicial', 'cantidad', 'inventario', 'disponible'],
+  destacado: ['destacado', 'destacado_si_no', 'destacar'],
+  en_tienda: ['en_tienda', 'en_tienda_si_no', 'tienda', 'publicar', 'publicado', 'en_tienda_web'],
+};
+const BULK_MAP = Object.fromEntries(Object.entries(BULK_ALIAS).flatMap(([k, l]) => l.map(a => [a, k])));
+const BULK_SUMA_STOCK = ['existencias_bodega', 'existencias_almacen'];   // formato Stocka
+function colKey(t){
+  return norm(String(t == null ? '' : t)).replace(/[*%]/g, '').replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+}
 // Número desde una celda: si ya es número se usa tal cual; si es texto se limpia
-// el formato colombiano ("$3.500", "1.200,50").
+// el formato colombiano ("$3.500", "1.200,50", "129.000").
 function numCell(v){
   if(typeof v === 'number') return v;
-  const t = String(v == null ? '' : v).replace(/[$\s]/g, '');
-  if(!t) return NaN;
-  return parseFloat(t.replace(/\.(?=\d{3}(\D|$))/g, '').replace(',', '.'));
+  let s = String(v == null ? '' : v).replace(/[$\s]/g, '');
+  if(!s) return NaN;
+  if(s.includes(',') && s.includes('.')) s = s.lastIndexOf(',') > s.lastIndexOf('.') ? s.replace(/\./g, '').replace(',', '.') : s.replace(/,/g, '');
+  else if((s.match(/\./g) || []).length > 1 || (s.match(/,/g) || []).length > 1) s = s.replace(/[.,]/g, '');
+  else if(/[.,]/.test(s)){ const [e, d] = s.split(/[.,]/); s = (d.length === 3 && !['', '0', '-0'].includes(e)) ? e + d : e + '.' + d; }
+  return /^-?\d+(\.\d+)?$/.test(s) ? parseFloat(s) : NaN;
 }
-function importPriceList(file){
-  if(!file) return;
-  const msg = document.getElementById('importMsg');
-  state.importMsg = '';
-  msg.innerHTML = '<div class="msg" style="background:var(--panel2);color:var(--muted)">Leyendo archivo...</div>';
-  const reader = new FileReader();
-  reader.onload = async (e)=>{
-    try{
-      const wb = XLSX.read(new Uint8Array(e.target.result), { type:'array' });
-      const sheet = wb.Sheets[wb.SheetNames[0]];
-      const rows = XLSX.utils.sheet_to_json(sheet, { header:1 });
-      let curCatName = null;
-      const newCats = new Set();
-      const toUpsert = [];
-      let skipped = 0, badStock = 0;
-      for(let i=1;i<rows.length;i++){
-        const r = rows[i]; if(!r || r.length===0) continue;
-        const name = (r[0]||'').toString().trim();
-        const code = (r[1]||'').toString().trim();
-        const price = numCell(r[2]);
-        // Columna D (opcional): existencias. Vacía = no se toca el stock.
-        const stock = (r[3] == null || String(r[3]).trim() === '') ? null : Math.round(numCell(r[3]));
-        if(!name) continue;
-        if(!code){ curCatName = toTitle(name); newCats.add(curCatName); continue; }
-        if(isNaN(price)){ skipped++; continue; }
-        if(stock !== null && (isNaN(stock) || stock < 0)){ badStock++; }
-        const row = { name: toTitle(name), code, category: curCatName || 'Sin categoría', price };
-        if(stock !== null && !isNaN(stock) && stock >= 0) row.stock = stock;
-        toUpsert.push(row);
-      }
-      msg.innerHTML = `<div class="msg" style="background:var(--panel2);color:var(--muted)">Importando ${toUpsert.length} productos...</div>`;
-      const existing = new Set(state.categories);
-      const catsToAdd = [...newCats].filter(c=>!existing.has(c)).map(name=>({name}));
-      if(catsToAdd.length) await sb.from('categories').insert(catsToAdd);
-      const BATCH = 200;
-      const existingCodes = new Set(state.adminProducts.map(p => p.code).filter(Boolean));
-      // Productos que ya existen: se actualizan nombre, categoría y precio; el stock solo
-      // si la fila trae existencias. Los nuevos entran con sus existencias, o 15 si no traen.
-      // (Se suben en grupos con las mismas columnas para no dejar el stock vacío.)
-      const existingRows = toUpsert.filter(b => existingCodes.has(b.code));
-      const exWithStock = existingRows.filter(b => b.stock != null);
-      const exNoStock = existingRows.filter(b => b.stock == null);
-      const newRows = toUpsert.filter(b => !existingCodes.has(b.code)).map(b => ({ ...b, stock: b.stock != null ? b.stock : 15 }));
-      for(const batchRows of [exWithStock, exNoStock, newRows]){
-        for(let i=0;i<batchRows.length;i+=BATCH){
-          const { error } = await sb.from('products').upsert(batchRows.slice(i,i+BATCH), { onConflict:'code' });
-          if(error){ throw error; }
-        }
-      }
-      const partes = [`${existingRows.length} actualizados`, `${newRows.length} nuevos`];
-      if(exWithStock.length || newRows.some(b => b.stock !== 15)) partes.push(`${exWithStock.length + newRows.filter(b => toUpsert.find(x => x.code === b.code).stock != null).length} con existencias del archivo`);
-      if(exNoStock.length) partes.push(`${exNoStock.length} sin existencias en el archivo (stock sin cambios)`);
-      if(skipped) partes.push(`${skipped} filas sin precio omitidas`);
-      if(badStock) partes.push(`${badStock} con existencias no válidas (se ignoró ese valor)`);
-      state.importMsg = `<div class="msg ok">Importación completa: ${partes.join(', ')}.</div>`;
-      await refreshAfterProductChange();
-    }catch(err){
-      state.importMsg = `<div class="msg err">No se pudo completar la importación: ${esc(friendlyError(err))}</div>`;
-      const m = document.getElementById('importMsg'); if(m) m.innerHTML = state.importMsg;
-    }
-  };
-  reader.readAsArrayBuffer(file);
+function siNo(v){
+  const t = norm(String(v == null ? '' : v)).trim();
+  if(t === '') return null;
+  if(['si', 's', 'x', '1', 'true', 'verdadero', 'yes'].includes(t)) return true;
+  if(['no', 'n', '0', 'false', 'falso'].includes(t)) return false;
+  return undefined;   // no válido
 }
 
-// Catálogo completo en el mismo formato de la importación: se edita en Excel y se
-// vuelve a subir. Los productos sin código van en otra hoja (no se pueden reimportar).
+// Lee la primera hoja (o la hoja "Catálogo"/"Inventario" si existe) de un .xlsx o un .csv
+async function bulkReadFile(file){
+  let wb;
+  if(/\.csv$/i.test(file.name)){
+    let text = await file.text();
+    text = text.replace(/^﻿/, '');
+    const first = text.split(/\r?\n/)[0] || '';
+    const fs = (first.match(/;/g) || []).length > (first.match(/,/g) || []).length ? ';' : ',';
+    wb = XLSX.read(text, { type: 'string', FS: fs, raw: true });
+  } else {
+    wb = XLSX.read(new Uint8Array(await file.arrayBuffer()), { type: 'array' });
+  }
+  const name = wb.SheetNames.find(n => ['catalogo', 'inventario', 'repuestos', 'productos'].includes(colKey(n))) || wb.SheetNames[0];
+  return XLSX.utils.sheet_to_json(wb.Sheets[name], { header: 1, defval: '', raw: true });
+}
+
+// Convierte las filas del archivo en registros {fila, datos...}
+function bulkParse(rows){
+  let hi = -1, map = null;
+  for(let i = 0; i < Math.min(rows.length, 10); i++){
+    const keys = (rows[i] || []).map(colKey);
+    const m = {};
+    keys.forEach((k, j) => {
+      const f = BULK_MAP[k];
+      if(f && m[f] == null) m[f] = j;
+      if(BULK_SUMA_STOCK.includes(k)) (m._suma = m._suma || []).push(j);
+    });
+    if(m.codigo != null || m.nombre != null){ hi = i; map = m; break; }
+  }
+  if(hi < 0) throw new Error('No encuentro las columnas «Código» o «Nombre». Revisa los títulos de la primera fila o usa la plantilla.');
+  // Stocka trae «Descripción» como nombre cuando no hay columna Nombre
+  if(map.nombre == null && map.descripcion != null){ map.nombre = map.descripcion; delete map.descripcion; }
+  const legacy = map.categoria == null;   // formato anterior: filas sin código = categoría
+  const out = [];
+  let cat = null;
+  for(let i = hi + 1; i < rows.length; i++){
+    const r = rows[i] || [];
+    const cell = f => map[f] == null ? '' : String(r[map[f]] == null ? '' : r[map[f]]).trim();
+    const raw = f => map[f] == null ? '' : r[map[f]];
+    if(!r.some(c => String(c).trim() !== '')) continue;
+    if(/^totales/i.test(String(r[0] || ''))) continue;
+    const codigo = cell('codigo'), nombre = cell('nombre');
+    if(legacy && !codigo){ if(nombre){ cat = toTitle(nombre); } continue; }
+    const rec = { fila: i + 1, codigo, nombre, categoria: legacy ? (cat || '') : cell('categoria'),
+      marca: cell('marca'), compatibilidad: cell('compatibilidad'), descripcion: cell('descripcion'),
+      precio: raw('precio'), stock: raw('stock'), destacado: cell('destacado'), en_tienda: cell('en_tienda'), orig: r };
+    if(map._suma && String(rec.stock).trim() === ''){
+      const t = map._suma.reduce((s, j) => s + (isNaN(numCell(r[j])) ? 0 : numCell(r[j])), 0);
+      rec.stock = map._suma.some(j => String(r[j]).trim() !== '') ? t : '';
+    }
+    out.push(rec);
+  }
+  return { header: rows[hi], records: out, legacy, cols: Object.keys(map).filter(k => !k.startsWith('_')) };
+}
+
+// Valida cada registro contra lo que ya existe. Devuelve {ok:[...], bad:[...]}
+function bulkValidate(records){
+  const byCode = new Map(state.adminProducts.filter(p => p.code).map(p => [p.code.toUpperCase(), p]));
+  const seen = new Map();
+  const ok = [], bad = [];
+  for(const r of records){
+    const reject = motivo => bad.push({ ...r, motivo });
+    if(!r.codigo){ reject('Falta el código'); continue; }
+    const key = r.codigo.toUpperCase();
+    if(seen.has(key)){ reject(`Código repetido en el archivo (ya está en la fila ${seen.get(key)})`); continue; }
+    seen.set(key, r.fila);
+    if(r.codigo.length > 40){ reject('El código es muy largo (máximo 40 caracteres)'); continue; }
+    const ex = byCode.get(key);
+    const precioTxt = String(r.precio == null ? '' : r.precio).trim();
+    const precio = precioTxt === '' ? null : numCell(r.precio);
+    if(precio !== null && (isNaN(precio) || precio <= 0)){ reject(`Precio no válido: «${precioTxt}»`); continue; }
+    const stockTxt = String(r.stock == null ? '' : r.stock).trim();
+    const stock = stockTxt === '' ? null : numCell(r.stock);
+    if(stock !== null && (isNaN(stock) || stock < 0 || !Number.isInteger(Math.round(stock * 1000) / 1000))){ reject(`Existencias no válidas: «${stockTxt}»`); continue; }
+    const dest = siNo(r.destacado), tienda = siNo(r.en_tienda);
+    if(dest === undefined){ reject(`En «Destacado» escribe SI o NO (dice «${r.destacado}»)`); continue; }
+    if(tienda === undefined){ reject(`En «En tienda» escribe SI o NO (dice «${r.en_tienda}»)`); continue; }
+    if(!ex){
+      if(!r.nombre){ reject('Producto nuevo sin nombre'); continue; }
+      if(precio === null){ reject('Producto nuevo sin precio'); continue; }
+    }
+    // Lo que no viene en el archivo se deja como está (o con el valor por defecto si es nuevo)
+    const row = {
+      code: ex ? ex.code : r.codigo,
+      name: r.nombre ? toTitle(r.nombre).slice(0, 200) : ex.name,
+      category: r.categoria ? toTitle(r.categoria).slice(0, 80) : (ex ? ex.category : 'Sin categoría'),
+      price: precio !== null ? Math.round(precio) : Number(ex.price),
+      marca: r.marca ? r.marca.slice(0, 60) : (ex ? ex.marca || null : null),
+      compatibilidad: r.compatibilidad ? r.compatibilidad.slice(0, 300) : (ex ? ex.compatibilidad || null : null),
+      descripcion: r.descripcion ? r.descripcion.slice(0, 1000) : (ex ? ex.descripcion || null : null),
+      featured: dest !== null ? dest : (ex ? !!ex.featured : false),
+      en_tienda: tienda !== null ? tienda : (ex ? ex.en_tienda !== false : true),
+    };
+    if(stock !== null) row.stock = Math.round(stock);
+    else if(!ex) row.stock = 15;
+    ok.push({ ...r, row, nuevo: !ex, conStock: stock !== null });
+  }
+  return { ok, bad };
+}
+
+function setBulkProgress(pct, text){
+  const bar = document.getElementById('bulkBar'), t = document.getElementById('bulkStatus');
+  if(bar){ bar.style.display = ''; bar.firstElementChild.style.width = Math.round(pct) + '%'; }
+  if(t) t.textContent = text;
+}
+
+async function bulkImport(file){
+  if(!file) return;
+  if(state.needsV3){ state.bulkResult = { error: 'Primero corre en Supabase el archivo supabase/migracion_productos_v3.sql.' }; renderAdminPanel(); return; }
+  state.bulkResult = null; state.bulkBusy = true; renderAdminPanel();
+  try{
+    setBulkProgress(3, 'Leyendo el archivo…');
+    const rows = await bulkReadFile(file);
+    const { records, legacy } = bulkParse(rows);
+    if(!records.length) throw new Error('El archivo no tiene filas de productos.');
+    const { ok, bad } = bulkValidate(records);
+    // Categorías nuevas
+    const nuevas = [...new Set(ok.map(x => x.row.category))].filter(c => !state.categories.includes(c));
+    if(nuevas.length){
+      const { error } = await sb.from('categories').upsert(nuevas.map(name => ({ name })), { onConflict: 'name', ignoreDuplicates: true });
+      if(error) throw error;
+    }
+    // Se guarda por lotes de 200; con y sin existencias por separado (sin existencias el stock no se toca)
+    const grupos = [ok.filter(x => x.conStock || x.nuevo), ok.filter(x => !x.conStock && !x.nuevo)];
+    const total = ok.length;
+    let hechos = 0, creados = 0, actualizados = 0;
+    for(const g of grupos){
+      for(let i = 0; i < g.length; i += 200){
+        const lote = g.slice(i, i + 200);
+        const { error } = await sb.from('products').upsert(lote.map(x => x.row), { onConflict: 'code' });
+        if(error){ lote.forEach(x => bad.push({ ...x, motivo: 'No se pudo guardar: ' + friendlyError(error) })); }
+        else lote.forEach(x => x.nuevo ? creados++ : actualizados++);
+        hechos += lote.length;
+        setBulkProgress(5 + 90 * hechos / Math.max(total, 1), `Guardando… ${hechos} de ${total}`);
+      }
+    }
+    bad.sort((a, b) => a.fila - b.fila);
+    state.bulkResult = { archivo: file.name, filas: records.length, creados, actualizados, bad, legacy,
+      conStock: ok.filter(x => x.conStock).length, sinStock: ok.filter(x => !x.conStock && !x.nuevo).length };
+    await refreshAfterProductChange();
+  }catch(err){
+    state.bulkResult = { error: friendlyError(err) };
+  }finally{
+    state.bulkBusy = false;
+    renderAdminPanel();
+  }
+}
+
+function bulkResultHtml(){
+  const r = state.bulkResult;
+  if(!r) return '';
+  if(r.error) return `<div class="msg err">${esc(r.error)}</div>`;
+  const ok = r.creados + r.actualizados;
+  const partes = [`<b>${r.actualizados}</b> actualizados`, `<b>${r.creados}</b> nuevos`];
+  if(r.conStock) partes.push(`${r.conStock} con existencias del archivo`);
+  if(r.sinStock) partes.push(`${r.sinStock} sin existencias (stock sin cambios)`);
+  return `<div class="msg ${r.bad.length ? (ok ? 'warn' : 'err') : 'ok'}">«${esc(r.archivo)}»: ${r.filas} filas · ${partes.join(' · ')}${r.bad.length ? ` · <b>${r.bad.length} rechazadas</b>` : ''}.${r.legacy ? '<br><small>Se leyó en el formato anterior (filas de categoría sin código).</small>' : ''}</div>
+    ${r.bad.length ? `<div class="bulk-bad"><div class="row" style="justify-content:space-between;flex-wrap:wrap;gap:8px"><b>Filas rechazadas</b><button class="btn-outline btn-sm" onclick="downloadRejected()">Descargar rechazadas (Excel)</button></div>
+      <div style="overflow-x:auto;max-height:40vh;overflow-y:auto"><table><tr><th>Fila</th><th>Código</th><th>Nombre</th><th>Motivo</th></tr>${r.bad.slice(0, 200).map(b =>
+        `<tr><td>${b.fila}</td><td>${esc(b.codigo)}</td><td>${esc(b.nombre)}</td><td class="mot">${esc(b.motivo)}</td></tr>`).join('')}</table></div>
+      ${r.bad.length > 200 ? `<small>Se muestran 200 de ${r.bad.length}; el Excel trae todas.</small>` : ''}</div>` : ''}`;
+}
+function downloadRejected(){
+  const r = state.bulkResult; if(!r || !r.bad.length) return;
+  const rows = [['Fila', 'Motivo', ...BULK_COLS.map(c => c[1])]];
+  r.bad.forEach(b => rows.push([b.fila, b.motivo, b.codigo, b.nombre, b.categoria, b.marca, b.compatibilidad, b.descripcion, b.precio, b.stock, b.destacado, b.en_tienda]));
+  const ws = XLSX.utils.aoa_to_sheet(rows);
+  ws['!cols'] = [{ wch: 6 }, { wch: 46 }, { wch: 14 }, { wch: 44 }, { wch: 22 }, { wch: 14 }, { wch: 26 }, { wch: 30 }, { wch: 11 }, { wch: 11 }, { wch: 10 }, { wch: 10 }];
+  const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Rechazadas');
+  XLSX.writeFile(wb, 'filas-rechazadas.xlsx');
+}
+
+function bulkInstructionsSheet(){
+  const l = [
+    ['Cómo llenar el archivo (la tienda lee la primera hoja)'], [''],
+    ['Una fila por producto. Los títulos de la primera fila se pueden escribir con o sin tildes.'], [''],
+    ...BULK_COLS.map(c => [`${c[1]}: ${c[2]}`]), [''],
+    ['Si el código ya existe, el producto se actualiza: lo que dejes vacío se queda como está.'],
+    ['Si el código no existe, se crea un producto nuevo (necesita Nombre y Precio).'],
+    ['Borrar una fila no elimina el producto. Para ocultarlo de la tienda pon NO en "En tienda".'],
+    ['Las fotos no van en el Excel: súbelas en bloque con un ZIP (Carga masiva → Fotos en bloque) o una por una en Editar.'],
+    ['También se aceptan archivos .csv (separados por coma o punto y coma) y los Excel que exporta Stocka.'],
+  ];
+  const ws = XLSX.utils.aoa_to_sheet(l); ws['!cols'] = [{ wch: 130 }]; return ws;
+}
+function bulkSheet(rows){
+  const ws = XLSX.utils.aoa_to_sheet(rows);
+  ws['!cols'] = [{ wch: 14 }, { wch: 46 }, { wch: 24 }, { wch: 14 }, { wch: 30 }, { wch: 36 }, { wch: 11 }, { wch: 12 }, { wch: 17 }, { wch: 17 }];
+  BULK_COLS.forEach((c, i) => { const ref = XLSX.utils.encode_cell({ r: 0, c: i }); if(ws[ref]){ ws[ref].c = [{ a: 'JK2M', t: c[2] }]; ws[ref].c.hidden = true; } });
+  ws['!autofilter'] = { ref: XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: Math.max(rows.length - 1, 1), c: BULK_COLS.length - 1 } }) };
+  return ws;
+}
+function downloadTemplate(){
+  const rows = [BULK_COLS.map(c => c[1]),
+    ['EJEMPLO-001', 'Kit Arrastre 428 Boxer Ct 100 (borrar esta fila)', 'Kit Arrastre', 'Riffel', 'Boxer CT 100, Platino 100', 'Piñón, corona y cadena 428', 129000, 3, 'NO', 'SI']];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, bulkSheet(rows), 'Catálogo');
+  XLSX.utils.book_append_sheet(wb, bulkInstructionsSheet(), 'Instrucciones');
+  XLSX.writeFile(wb, 'plantilla-productos-jk2m.xlsx');
+}
+// Catálogo completo en el mismo formato: se edita en Excel y se vuelve a subir.
 function exportCatalog(){
   if(!state.adminLoaded){ showToast('Espera a que carguen los productos'); return; }
   const ps = state.adminProducts.slice().sort((a, b) => a.category.localeCompare(b.category, 'es') || a.name.localeCompare(b.name, 'es'));
-  const rows = [['Producto', 'Código', 'Precio', 'Existencias']];
-  const sinCodigo = [['Producto', 'Categoría', 'Precio', 'Existencias']];
-  let cur = null;
+  const rows = [BULK_COLS.map(c => c[1])], sin = [['Nombre', 'Categoría', 'Precio', 'Existencias']];
   for(const p of ps){
-    if(!p.code){ sinCodigo.push([p.name, p.category, Number(p.price), p.stock]); continue; }
-    if(p.category !== cur){ rows.push([p.category, null, null, null]); cur = p.category; }
-    rows.push([p.name, p.code, Number(p.price), p.stock]);
+    if(!p.code){ sin.push([p.name, p.category, Number(p.price), p.stock]); continue; }
+    rows.push([p.code, p.name, p.category, p.marca || '', p.compatibilidad || '', p.descripcion || '', Number(p.price), p.stock, p.featured ? 'SI' : 'NO', p.en_tienda === false ? 'NO' : 'SI']);
   }
   const wb = XLSX.utils.book_new();
-  const ws = XLSX.utils.aoa_to_sheet(rows);
-  ws['!cols'] = [{ wch: 52 }, { wch: 14 }, { wch: 12 }, { wch: 13 }];
-  XLSX.utils.book_append_sheet(wb, ws, 'Catálogo');
-  if(sinCodigo.length > 1){
-    const w2 = XLSX.utils.aoa_to_sheet(sinCodigo);
-    w2['!cols'] = [{ wch: 52 }, { wch: 24 }, { wch: 12 }, { wch: 13 }];
-    XLSX.utils.book_append_sheet(wb, w2, 'Sin código');
-  }
-  const ins = [
-    ['Cómo usar este archivo (la tienda solo lee la primera hoja, "Catálogo"):'], [''],
-    ['Columna A · Producto: nombre. Una fila SIN código es el nombre de una categoría; los productos de abajo quedan en ella.'],
-    ['Columna B · Código: identifica el producto. Si el código ya existe, se actualiza; si no, se crea un producto nuevo.'],
-    ['Columna C · Precio: precio base en pesos, sin descuentos de cliente.'],
-    ['Columna D · Existencias: si trae un número, ese queda como stock. Si la dejas vacía, el stock no se toca (los nuevos entran con 15).'],
-    [''], ['Para cambiar solo precios, borra la columna D o déjala vacía.'],
-    ['Los productos de la hoja "Sin código" no se pueden actualizar con este archivo: ponles código desde el panel (Editar).'],
-    ['Se sube en el panel: Productos → Importar productos y precios (Excel).'],
-  ];
-  const w3 = XLSX.utils.aoa_to_sheet(ins); w3['!cols'] = [{ wch: 120 }];
-  XLSX.utils.book_append_sheet(wb, w3, 'Instrucciones');
+  XLSX.utils.book_append_sheet(wb, bulkSheet(rows), 'Catálogo');
+  if(sin.length > 1){ const w = XLSX.utils.aoa_to_sheet(sin); w['!cols'] = [{ wch: 46 }, { wch: 24 }, { wch: 11 }, { wch: 12 }]; XLSX.utils.book_append_sheet(wb, w, 'Sin código'); }
+  XLSX.utils.book_append_sheet(wb, bulkInstructionsSheet(), 'Instrucciones');
   XLSX.writeFile(wb, `catalogo-jk2m-${new Date().toISOString().slice(0, 10)}.xlsx`);
-  showToast(`Catálogo descargado: ${ps.length - (sinCodigo.length - 1)} productos`);
+  showToast(`Catálogo descargado: ${rows.length - 1} productos`);
+}
+// Compatibilidad con el botón anterior
+function importPriceList(file){ return bulkImport(file); }
+
+// ── Fotos en bloque (ZIP): cada foto se llama como el código del producto ──
+function imgKey(s){ return String(s || '').toUpperCase().replace(/\.[A-Z0-9]+$/, '').replace(/[^A-Z0-9]/g, ''); }
+let jszipReady = null;
+function loadJSZip(){
+  if(window.JSZip) return Promise.resolve();
+  if(!jszipReady) jszipReady = new Promise((res, rej) => {
+    const s = document.createElement('script');
+    s.src = 'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js';
+    s.onload = res; s.onerror = () => { jszipReady = null; rej(new Error('No se pudo cargar el lector de ZIP. Revisa la conexión.')); };
+    document.head.appendChild(s);
+  });
+  return jszipReady;
+}
+async function bulkPhotos(file){
+  if(!file) return;
+  const soloSin = document.getElementById('zipSoloSin') && document.getElementById('zipSoloSin').checked;
+  state.zipResult = null; state.bulkBusy = true; renderAdminPanel();
+  const res = { asignadas: 0, sinCoincidencia: [], conError: [], omitidas: 0 };
+  try{
+    if(file.size > 200 * 1024 * 1024) throw new Error('El ZIP pesa más de 200 MB. Divídelo en varios.');
+    setBulkProgress(2, 'Abriendo el ZIP…');
+    await loadJSZip();
+    const zip = await JSZip.loadAsync(file);
+    const fotos = Object.values(zip.files).filter(f => !f.dir && /\.(jpe?g|png|webp)$/i.test(f.name) && !/(^|\/)(__MACOSX|\.)/.test(f.name));
+    if(!fotos.length) throw new Error('El ZIP no tiene fotos JPG, PNG o WEBP.');
+    const byKey = new Map();
+    state.adminProducts.forEach(p => { if(p.code) byKey.set(imgKey(p.code), p); });
+    for(let i = 0; i < fotos.length; i++){
+      const f = fotos[i], nombre = f.name.split('/').pop();
+      setBulkProgress(5 + 92 * i / fotos.length, `Foto ${i + 1} de ${fotos.length}: ${nombre}`);
+      const p = byKey.get(imgKey(nombre));
+      if(!p){ res.sinCoincidencia.push(nombre); continue; }
+      if(soloSin && p.image_url){ res.omitidas++; continue; }
+      try{
+        const blob = await f.async('blob');
+        if(blob.size > 15 * 1024 * 1024) throw new Error('más de 15 MB');
+        const type = /\.png$/i.test(nombre) ? 'image/png' : /\.webp$/i.test(nombre) ? 'image/webp' : 'image/jpeg';
+        const r = await optimizeImage(new File([blob], nombre, { type }));
+        const url = await uploadToStorage(r.file, p.id);
+        const { error } = await sb.from('products').update({ image_url: url }).eq('id', p.id);
+        if(error) throw error;
+        if(p.image_url && p.image_url !== url) removeStorageFile(p.image_url);
+        p.image_url = url;
+        res.asignadas++;
+      }catch(e){ res.conError.push(nombre + ' (' + friendlyError(e) + ')'); }
+    }
+    state.zipResult = { archivo: file.name, total: fotos.length, ...res };
+  }catch(err){
+    state.zipResult = { error: friendlyError(err) };
+  }finally{
+    state.bulkBusy = false;
+    renderAdminPanel();
+  }
+}
+function zipResultHtml(){
+  const r = state.zipResult;
+  if(!r) return '';
+  if(r.error) return `<div class="msg err">${esc(r.error)}</div>`;
+  const list = (t, a) => a.length ? `<details><summary>${t} (${a.length})</summary><div class="ziplist">${a.slice(0, 300).map(esc).join('<br>')}</div></details>` : '';
+  return `<div class="msg ${r.sinCoincidencia.length || r.conError.length ? 'warn' : 'ok'}">«${esc(r.archivo)}»: ${r.total} fotos · <b>${r.asignadas}</b> asignadas${r.omitidas ? ` · ${r.omitidas} omitidas (ya tenían foto)` : ''}${r.sinCoincidencia.length ? ` · ${r.sinCoincidencia.length} sin producto con ese código` : ''}${r.conError.length ? ` · ${r.conError.length} con error` : ''}.</div>
+    ${list('Fotos sin producto con ese código', r.sinCoincidencia)}${list('Fotos con error', r.conError)}`;
 }
 
+// Pestaña del panel
+function adminBulkHtml(){
+  const busy = state.bulkBusy;
+  return `<div class="bulk">
+    ${state.needsV3 ? '<div class="msg err">Para usar la carga masiva nueva, corre en Supabase el archivo <b>supabase/migracion_productos_v3.sql</b>.</div>' : ''}
+    <section class="bulk-step"><h3>1. Prepara el Excel</h3>
+      <p><b>Para editar lo que ya tienes:</b> descarga el catálogo, cambia lo que necesites (precios, existencias, nombres, marca, compatibilidad…) y súbelo abajo.</p>
+      <p><b>Para crear productos nuevos:</b> agrega filas (o usa la plantilla) con Código, Nombre y Precio.</p>
+      <div class="row" style="flex-wrap:wrap;margin:10px 0">
+        <button class="btn btn-sm" onclick="exportCatalog()">Descargar catálogo actual</button>
+        <button class="btn-outline btn-sm" onclick="downloadTemplate()">Plantilla vacía</button>
+      </div>
+      <ul class="bulk-rules">
+        <li>Una fila por producto. El <b>código</b> es lo que reconoce cada producto: si existe, se actualiza; si no, se crea.</li>
+        <li>Lo que dejes vacío en un producto que ya existe se queda como está. <b>Existencias</b> vacía = el stock no se toca.</li>
+        <li><b>En tienda = NO</b> oculta el producto sin borrarlo. Borrar una fila del Excel no elimina nada.</li>
+        <li>Las categorías nuevas se crean solas. También sirven archivos .csv y el Excel que exporta Stocka.</li>
+      </ul></section>
+    <section class="bulk-step"><h3>2. Sube el archivo</h3>
+      <label class="drop ${busy ? 'dis' : ''}"><input type="file" accept=".xlsx,.xls,.csv" ${busy ? 'disabled' : ''} onchange="bulkImport(this.files[0]);this.value=''">
+        <b>Toca para elegir el Excel</b><span>.xlsx o .csv · cada fila se acepta o se rechaza con su motivo</span></label>
+      ${bulkResultHtml()}</section>
+    <section class="bulk-step"><h3>3. Fotos en bloque (ZIP)</h3>
+      <p>Comprime las fotos en un .zip. Cada foto se debe llamar como el código del producto (<b>JKM210333.jpg</b>). Se ignoran mayúsculas, espacios y guiones. Cada foto se reduce sola antes de subirla.</p>
+      <label class="check"><input type="checkbox" id="zipSoloSin" checked> Solo a los productos que no tienen foto</label>
+      <label class="drop ${busy ? 'dis' : ''}"><input type="file" accept=".zip" ${busy ? 'disabled' : ''} onchange="bulkPhotos(this.files[0]);this.value=''">
+        <b>Toca para elegir el ZIP</b><span>JPG, PNG o WEBP · no cierres la página hasta que termine</span></label>
+      ${zipResultHtml()}</section>
+    <div class="bulkbar" id="bulkBar" style="${busy ? '' : 'display:none'}"><span></span></div><div class="img-info" id="bulkStatus"></div>
+  </div>`;
+}
 // ───────────────────────────── Avisos (toast) ───────────────────────────
 let toastTimer = null;
 function showToast(msg){
@@ -1054,6 +1327,8 @@ async function openProduct(id){
   renderQtyModal();
   document.getElementById('qtyRelated').innerHTML = '';
   openModal('qtyModal');
+  // El catálogo no trae la descripción: se pide al abrir la ficha
+  if(!('descripcion' in p)) fetchProducts([id]).then(() => { if(state.qtyId === id) renderQtyModal(); }).catch(() => {});
   loadRelated(p);
 }
 // Compatibilidad con llamadas anteriores
@@ -1078,6 +1353,10 @@ function renderQtyModal(){
   const fp = priceFor(p.price);
   document.getElementById('qtyThumb').innerHTML = p.image_url ? `<img src="${esc(p.image_url)}" alt="">` : NO_IMG;
   document.getElementById('qtyCat').textContent = p.category + (p.code ? ' · ' + p.code : '');
+  const info = [p.marca ? `<div><span>Marca</span><b>${esc(p.marca)}</b></div>` : '',
+    p.compatibilidad ? `<div><span>Compatible con</span><b>${esc(p.compatibilidad)}</b></div>` : '',
+    p.descripcion ? `<p>${esc(p.descripcion)}</p>` : ''].join('');
+  const qi = document.getElementById('qtyInfo'); qi.innerHTML = info; qi.style.display = info ? '' : 'none';
   document.getElementById('qtyName').textContent = p.name;
   document.getElementById('qtyPrice').textContent = fmt(fp);
   document.getElementById('qtyStock').textContent = disp < 1 ? 'Agotado' : (disp + (disp === 1 ? ' disponible' : ' disponibles') + (have ? ' · ya tienes ' + have + ' en el carrito' : ''));

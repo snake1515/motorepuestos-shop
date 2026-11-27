@@ -18,7 +18,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700;800&family=Barlow:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<link rel="stylesheet" href="styles.css?v=20261118a">
+<link rel="stylesheet" href="styles.css?v=20261127a">
 </head>
 <body>
 <!-- Pantalla de carga: se ve mientras llega el catálogo; app.js la quita al terminar -->
@@ -155,6 +155,7 @@
   <h2 id="qtyName" style="margin:4px 0 12px"></h2>
   <div class="qty-thumb" id="qtyThumb"></div>
   <div class="qty-meta"><span class="price" id="qtyPrice"></span><span class="stock" id="qtyStock"></span></div>
+  <div class="qty-info" id="qtyInfo" style="display:none"></div>
   <div class="qty-row">
     <b>Cantidad</b>
     <div class="stepper">
@@ -192,6 +193,12 @@
   <div class="field"><label>Categoría</label><select id="pCat"></select></div>
   <div class="field"><label>Precio base (COP)</label><input id="pPrice" type="number"></div>
   <div class="field"><label>Stock</label><input id="pStock" type="number" value="10"></div>
+  <div id="pExtra">
+    <div class="field"><label for="pMarca">Marca (opcional)</label><input id="pMarca" maxlength="60"></div>
+    <div class="field"><label for="pCompat">Compatible con (opcional)</label><input id="pCompat" maxlength="300" placeholder="Ej: Boxer CT 100, Platino 100"></div>
+    <div class="field"><label for="pDesc">Descripción (opcional)</label><textarea id="pDesc" rows="2" maxlength="1000"></textarea></div>
+    <label class="check"><input type="checkbox" id="pTienda" checked> Publicado en la tienda</label>
+  </div>
   <label class="check"><input type="checkbox" id="pFeatured"> Destacado (sale primero en la tienda)</label>
   <div class="field"><label>Imagen (se reduce automáticamente)</label><input id="pImg" type="file" accept="image/*"></div>
   <div class="img-box" id="pImgBox"><div class="img-thumb"><img id="pImgPreview" alt=""></div><div class="img-info" id="pImgInfo"></div></div>
@@ -199,7 +206,7 @@
   <button class="btn" style="width:100%" onclick="saveProduct()" id="pSaveBtn">Guardar producto</button>
 </div></div>
 
-<script src="config.js?v=20261118a"></script>
-<script src="app.js?v=20261118a"></script>
+<script src="config.js?v=20261127a"></script>
+<script src="app.js?v=20261127a"></script>
 </body>
 </html>
